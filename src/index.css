@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --amarelo:      #F5A623;
+  --amarelo-dark: #D4881A;
+  --azul:         #3A7EC6;
+  --marrom:       #7B4A2D;
+  --verde:        #2E7D32;
+  --verde-light:  #43A047;
+  --preto:        #111111;
+  --bg:           #0f0f0f;
+  --bg2:          #181818;
+  --bg3:          #222222;
+  --borda:        #2e2e2e;
+  --texto:        #e8e8e8;
+  --texto2:       #999999;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: var(--bg);
+  color: var(--texto);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--borda); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+/* Utilitários MIS */
+@layer components {
+  .mis-card {
+    @apply bg-mis-bg2 border border-mis-borda rounded-xl2 p-5;
+  }
+
+  .mis-input {
+    @apply w-full bg-mis-bg3 border border-mis-borda text-mis-texto
+           rounded-lg px-3 py-2 text-sm font-poppins outline-none
+           transition-colors duration-150
+           focus:border-amarelo placeholder:text-mis-texto2;
+  }
+
+  .mis-label {
+    @apply block text-xs font-semibold uppercase tracking-widest
+           text-mis-texto2 mb-1.5;
+  }
+
+  .btn-primary {
+    @apply bg-amarelo text-black font-bold text-sm px-4 py-2
+           rounded-lg transition-colors duration-150
+           hover:bg-amarelo-dark active:scale-95 cursor-pointer;
+  }
+
+  .btn-secondary {
+    @apply bg-mis-bg3 border border-mis-borda text-mis-texto2
+           font-semibold text-sm px-4 py-2 rounded-lg
+           transition-colors duration-150
+           hover:border-mis-texto hover:text-mis-texto cursor-pointer;
+  }
+
+  .btn-danger {
+    @apply bg-red-900/30 border border-red-800 text-red-400
+           font-semibold text-sm px-4 py-2 rounded-lg
+           transition-colors duration-150
+           hover:bg-red-800/40 cursor-pointer;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold;
+  }
+
+  .badge-amarelo { @apply badge bg-amarelo/20 text-amarelo; }
+  .badge-azul    { @apply badge bg-azul/20 text-azul-light; }
+  .badge-verde   { @apply badge bg-verde/20 text-verde-light; }
+  .badge-marrom  { @apply badge bg-marrom/20 text-marrom-light; }
+  .badge-red     { @apply badge bg-red-900/30 text-red-400; }
+  .badge-gray    { @apply badge bg-mis-bg3 text-mis-texto2; }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
+           text-mis-texto2 font-medium transition-all duration-150
+           hover:bg-mis-bg3 hover:text-mis-texto cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply bg-amarelo/10 text-amarelo border border-amarelo/20;
+  }
+
+  .page-title {
+    @apply text-xl font-bold text-mis-texto font-poppins;
+  }
+
+  .section-title {
+    @apply text-base font-semibold text-mis-texto font-poppins;
+  }
+
+  .table-header {
+    @apply text-xs font-semibold uppercase tracking-wider
+           text-mis-texto2 bg-mis-bg3 px-4 py-3 text-left;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm text-mis-texto border-b border-mis-borda;
+  }
+}
+
+/* Animações */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-in  { animation: fadeIn 0.2s ease forwards; }
+.animate-slide-in { animation: slideIn 0.2s ease forwards; }
