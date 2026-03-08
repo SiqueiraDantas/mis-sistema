@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import logoMadeInSertao from '../../assets/logo-madeinsertao.png'
 import {
   LayoutDashboard, Users, ClipboardList, BookOpen,
-  BarChart2, FileText, GraduationCap, Menu, X, LogOut, ChevronRight
+  BarChart2, FileText, GraduationCap, Menu, LogOut, ChevronRight
 } from 'lucide-react'
 
 const menuProfessor = [
@@ -34,8 +35,6 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-mis-bg">
-
-      {/* OVERLAY MOBILE */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-20 md:hidden"
@@ -43,17 +42,21 @@ export default function Layout() {
         />
       )}
 
-      {/* SIDEBAR */}
       <aside className={`
         fixed top-0 left-0 h-full w-60 bg-mis-bg2 border-r border-mis-borda z-30
         flex flex-col transition-transform duration-200
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         md:translate-x-0 md:static md:z-auto
       `}>
-        {/* Logo */}
         <div className="p-5 border-b border-mis-borda">
           <div className="flex items-center gap-3">
-            <div className="bg-amarelo text-black font-black text-xs px-2 py-1 rounded-md">🎵 MIS</div>
+            <div className="w-12 h-12 bg-amarelo rounded-md flex items-center justify-center p-2 overflow-hidden">
+              <img
+                src={logoMadeInSertao}
+                alt="Logo Made In Sertão"
+                className="w-full h-full object-contain"
+              />
+            </div>
             <div>
               <p className="text-xs font-bold text-mis-texto leading-tight">Made In Sertão</p>
               <p className="text-xs text-mis-texto2">Escola de Música</p>
@@ -61,7 +64,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Menu */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {menu.map(item => (
             <NavLink
@@ -79,7 +81,6 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Perfil + Logout */}
         <div className="p-3 border-t border-mis-borda">
           <div className="mis-card p-3 mb-2">
             <p className="text-xs font-semibold text-mis-texto truncate">
@@ -99,11 +100,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* CONTEÚDO PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* HEADER */}
-        <header className="h-14 bg-mis-bg2 border-b border-mis-borda px-4
-                           flex items-center justify-between sticky top-0 z-10">
+        <header className="h-14 bg-mis-bg2 border-b border-mis-borda px-4 flex items-center justify-between sticky top-0 z-10">
           <button
             className="md:hidden text-mis-texto2 hover:text-mis-texto"
             onClick={() => setSidebarOpen(true)}
@@ -113,12 +111,15 @@ export default function Layout() {
           <div className="hidden md:block" />
           <div className="flex items-center gap-2">
             <span className="text-xs text-mis-texto2 font-mono">
-              {new Date().toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' })}
+              {new Date().toLocaleDateString('pt-BR', {
+                weekday: 'short',
+                day: '2-digit',
+                month: 'short'
+              })}
             </span>
           </div>
         </header>
 
-        {/* PÁGINA */}
         <main className="flex-1 p-5 md:p-6 animate-fade-in">
           <Outlet />
         </main>
