@@ -7,18 +7,27 @@ import { Plus, X, Save, Trash2, ChevronRight, AlertCircle, Calendar, User, FileT
 const ANO_ATUAL = new Date().getFullYear()
 const MESES = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
-function ModalPlano({ plano, turmaId, professorId, onClose, onSalvo }) {
+function ModalPlano({ plano, turmas, professorId, onClose, onSalvo }) {
   const editando = !!plano
+
   const [form, setForm] = useState({
+    turma_id: plano?.turma_id || '',
     data_aula: plano?.data_aula || '',
     conteudo: plano?.conteudo || '',
     metodologia: plano?.metodologia || '',
     materiais: plano?.materiais || '',
     plano_mensal: plano?.plano_mensal || '',
   })
+
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
   const [gerando, setGerando] = useState(false)
+
+  useEffect(() => {
+    if (!editando && !form.turma_id && turmas?.length > 0) {
+      setForm((f) => ({ ...f, turma_id: turmas[0].id }))
+    }
+  }, [editando, form.turma_id, turmas])
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -42,9 +51,7 @@ function ModalPlano({ plano, turmaId, professorId, onClose, onSalvo }) {
         },
       })
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       if (data?.texto) {
         set('plano_mensal', data.texto.trim())
@@ -64,6 +71,11 @@ function ModalPlano({ plano, turmaId, professorId, onClose, onSalvo }) {
   }
 
   async function salvar() {
+    if (!form.turma_id) {
+      setErro('Selecione a turma')
+      return
+    }
+
     if (!form.data_aula) {
       setErro('Informe a data da aula')
       return
@@ -79,7 +91,7 @@ function ModalPlano({ plano, turmaId, professorId, onClose, onSalvo }) {
 
     try {
       const payload = {
-        turma_id: turmaId,
+        turma_id: form.turma_id,
         professor_id: professorId,
         data_aula: form.data_aula,
         conteudo: form.conteudo.trim(),
@@ -118,6 +130,24 @@ function ModalPlano({ plano, turmaId, professorId, onClose, onSalvo }) {
           </div>
 
           <div className="p-4 space-y-4">
+            <div>
+              <label className="mis-label">
+                Turma <span className="text-amarelo">*</span>
+              </label>
+              <select
+                className="mis-input"
+                value={form.turma_id}
+                onChange={(e) => set('turma_id', e.target.value)}
+              >
+                <option value="">Selecione a turma</option>
+                {turmas.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="mis-label">
                 Data da aula <span className="text-amarelo">*</span>
@@ -399,7 +429,6 @@ export default function PlanosAula() {
 
   const { usuario: user, isDiretor } = useAuth()
   const [turmas, setTurmas] = useState([])
-  const [turmaSelecionada, setTurmaSelecionada] = useState('')
   const [mesFiltro, setMesFiltro] = useState(new Date().getMonth())
   const [planos, setPlanos] = useState([])
   const [perfil, setPerfil] = useState(null)
@@ -420,10 +449,6 @@ export default function PlanosAula() {
 
       setPerfil(prof)
       setTurmas(minhasTurmas || [])
-
-      if (minhasTurmas?.length > 0) {
-        setTurmaSelecionada(minhasTurmas[0].id)
-      }
     }
 
     if (user?.id) {
@@ -432,8 +457,6 @@ export default function PlanosAula() {
   }, [user, isDiretor])
 
   const buscarPlanos = useCallback(async () => {
-    if (!turmaSelecionada) return
-
     setLoading(true)
 
     const mesInicio = String(mesFiltro + 1).padStart(2, '0')
@@ -443,29 +466,38 @@ export default function PlanosAula() {
 
     const { data, error } = await supabase
       .from('planos_aula')
-      .select('*')
-      .eq('turma_id', turmaSelecionada)
+      .select('*, turmas(id, nome, oficinas(nome))')
       .gte('data_aula', dataInicio)
       .lte('data_aula', dataFim)
+      .eq('ano_letivo', ANO_ATUAL)
       .order('data_aula')
 
-    if (error) console.error(error)
+    if (error) {
+      console.error(error)
+      setPlanos([])
+      setLoading(false)
+      return
+    }
 
-    setPlanos(data || [])
+    const filtrados = isDiretor
+      ? (data || [])
+      : (data || []).filter((plano) => turmas.some((turma) => turma.id === plano.turma_id))
+
+    setPlanos(filtrados)
     setLoading(false)
-  }, [turmaSelecionada, mesFiltro])
+  }, [mesFiltro, isDiretor, turmas])
 
   useEffect(() => {
-    buscarPlanos()
-  }, [buscarPlanos])
+    if (user?.id && turmas.length >= 0) {
+      buscarPlanos()
+    }
+  }, [buscarPlanos, user, turmas])
 
   async function excluir(plano) {
     await supabase.from('planos_aula').delete().eq('id', plano.id)
     setPlanoExcluir(null)
     buscarPlanos()
   }
-
-  const turmaAtual = turmas.find((t) => t.id === turmaSelecionada)
 
   return (
     <div className="animate-fade-in">
@@ -497,22 +529,7 @@ export default function PlanosAula() {
       </div>
 
       <div className="mis-card mb-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mis-label">Turma</label>
-            <select
-              className="mis-input text-sm"
-              value={turmaSelecionada}
-              onChange={(e) => setTurmaSelecionada(e.target.value)}
-            >
-              {turmas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 gap-3">
           <div>
             <label className="mis-label">Mes</label>
             <select
@@ -542,7 +559,7 @@ export default function PlanosAula() {
           <FileText size={36} className="text-mis-borda mb-3" />
           <p className="text-mis-texto font-semibold mb-1">Nenhuma aula registrada</p>
           <p className="text-mis-texto2 text-sm mb-4">
-            {MESES[mesFiltro]} - {turmaAtual?.nome}
+            {MESES[mesFiltro]} - {ANO_ATUAL}
           </p>
           <button
             onClick={() => setModalNovo(true)}
@@ -557,6 +574,7 @@ export default function PlanosAula() {
             const data = plano.data_aula ? new Date(plano.data_aula + 'T12:00:00') : null
             const diaSemana = data ? data.toLocaleDateString('pt-BR', { weekday: 'short' }) : ''
             const diaNum = data ? data.getDate() : ''
+            const nomeTurma = plano.turmas?.nome || 'Turma sem nome'
 
             return (
               <div key={plano.id} className="mis-card hover:border-mis-texto/20 transition-all">
@@ -568,9 +586,7 @@ export default function PlanosAula() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-mis-texto mb-1">
-                      {turmaAtual?.oficinas?.nome || turmaAtual?.nome}
-                    </p>
+                    <p className="text-sm font-semibold text-mis-texto mb-1">{nomeTurma}</p>
                     <p className="text-xs text-mis-texto2 line-clamp-2">{plano.conteudo}</p>
 
                     <div className="flex gap-2 mt-2 flex-wrap">
@@ -607,7 +623,7 @@ export default function PlanosAula() {
       {(modalNovo || planoEditar) && (
         <ModalPlano
           plano={planoEditar}
-          turmaId={turmaSelecionada}
+          turmas={turmas}
           professorId={user.id}
           onClose={() => {
             setModalNovo(false)
