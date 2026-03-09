@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../services/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import logoMadeInSertao from '../../assets/logo-madeinsertao.png'
 
@@ -20,7 +21,18 @@ export default function Login() {
     setLoading(true)
 
     try {
-      await login(email, senha)
+      const data = await login(email, senha)
+
+      // Registrar login na tabela de logs
+      try {
+        await supabase.from('login_logs').insert({
+          usuario_id: data?.user?.id || null,
+          email: email,
+        })
+      } catch {
+        // Não bloquear login se o registro falhar
+      }
+
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setErro('E-mail ou senha incorretos.')

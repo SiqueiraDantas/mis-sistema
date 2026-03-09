@@ -66,14 +66,15 @@ export function AuthProvider({ children }) {
     if (error) throw error
   }
 
-  const isDiretor   = perfil?.perfil === 'diretor'
+  const isDiretor   = perfil?.perfil === 'diretor' || perfil?.perfil === 'dev'
   const isProfessor = perfil?.perfil === 'professor'
+  const isDev       = perfil?.perfil === 'dev'
 
   return (
     <AuthContext.Provider value={{
       usuario, perfil, loading,
       login, logout, recuperarSenha,
-      isDiretor, isProfessor
+      isDiretor, isProfessor, isDev
     }}>
       {children}
     </AuthContext.Provider>

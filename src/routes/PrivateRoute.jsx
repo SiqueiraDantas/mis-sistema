@@ -19,12 +19,18 @@ export function RoleRoute({ children, perfil }) {
   if (!usuario) return <Navigate to="/login" replace />
 
   const perfilAtual = p?.perfil?.toLowerCase?.().trim?.()
+  const perfilExigido = perfil.toLowerCase().trim()
 
-  if (perfilAtual !== perfil.toLowerCase().trim()) {
-    return <Navigate to="/dashboard" replace />
-  }
+  // Dev tem acesso a tudo
+  if (perfilAtual === 'dev') return children
 
-  return children
+  // Diretor tem acesso a rotas de diretor
+  if (perfilExigido === 'diretor' && perfilAtual === 'diretor') return children
+
+  // Verifica perfil exato
+  if (perfilAtual === perfilExigido) return children
+
+  return <Navigate to="/dashboard" replace />
 }
 
 function LoadingScreen() {

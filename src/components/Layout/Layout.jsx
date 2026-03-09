@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import logoMadeInSertao from '../../assets/logo-madeinsertao.png'
 import {
   LayoutDashboard, Users, ClipboardList, BookOpen,
-  BarChart2, FileText, GraduationCap, Menu, LogOut, ChevronRight
+  BarChart2, FileText, GraduationCap, Menu, LogOut, ChevronRight, Terminal
 } from 'lucide-react'
 
 const menuProfessor = [
@@ -21,17 +21,30 @@ const menuDiretor = [
   { path: '/diretor',     icon: BarChart2,       label: 'Painel Diretor' },
 ]
 
+const menuDev = [
+  ...menuDiretor,
+  { path: '/dev-panel',   icon: Terminal,        label: 'Painel Dev' },
+]
+
 export default function Layout() {
-  const { perfil, logout, isDiretor } = useAuth()
+  const { perfil, logout, isDiretor, isDev } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
-  const menu = isDiretor ? menuDiretor : menuProfessor
+  const menu = isDev ? menuDev : isDiretor ? menuDiretor : menuProfessor
 
   async function handleLogout() {
     await logout()
     navigate('/login', { replace: true })
   }
+
+  function getBadge() {
+    if (isDev) return { label: 'Dev', classe: 'badge-amarelo' }
+    if (isDiretor) return { label: 'Diretor', classe: 'badge-amarelo' }
+    return { label: 'Professor', classe: 'badge-azul' }
+  }
+
+  const badge = getBadge()
 
   return (
     <div className="flex min-h-screen bg-mis-bg">
@@ -86,8 +99,8 @@ export default function Layout() {
             <p className="text-xs font-semibold text-mis-texto truncate">
               {perfil?.nome || 'Usuário'}
             </p>
-            <span className={`badge mt-1 ${isDiretor ? 'badge-amarelo' : 'badge-azul'}`}>
-              {isDiretor ? 'Diretor' : 'Professor'}
+            <span className={`badge mt-1 ${badge.classe}`}>
+              {badge.label}
             </span>
           </div>
           <button

@@ -137,6 +137,8 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
           `)
           .eq('aluno_id', aluno.id)
 
+        console.log('DEBUG - Oficinas do aluno:', aluno.nome, 'ID:', aluno.id, 'Data:', data)
+
         if (error) throw error
 
         const registros = data || []
@@ -152,6 +154,8 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
 
         const oficinasCarregadas =
           oficinasAnoAtual.length > 0 ? oficinasAnoAtual : oficinasFallback
+
+        console.log('DEBUG - Oficinas carregadas:', oficinasCarregadas)
 
         if (ativo) {
           setForm(f => ({

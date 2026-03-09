@@ -18,6 +18,7 @@ import Frequencia from './pages/Frequencia/Frequencia'
 import Alunos from './pages/Alunos/Alunos'
 import Turmas from './pages/Turmas/Turmas'
 import Relatorios from './pages/Diretor/Relatorios'
+import DevPanel from './pages/Dev/DevPanel'
 
 export default function App() {
   return (
@@ -69,6 +70,15 @@ export default function App() {
               element={
                 <RoleRoute perfil="diretor">
                   <Relatorios />
+                </RoleRoute>
+              }
+            />
+
+            <Route
+              path="dev-panel"
+              element={
+                <RoleRoute perfil="dev">
+                  <DevPanel />
                 </RoleRoute>
               }
             />
