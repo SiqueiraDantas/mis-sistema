@@ -17,7 +17,12 @@ export function RoleRoute({ children, perfil }) {
 
   if (loading) return <LoadingScreen />
   if (!usuario) return <Navigate to="/login" replace />
-  if (p?.perfil !== perfil) return <Navigate to="/dashboard" replace />
+
+  const perfilAtual = p?.perfil?.toLowerCase?.().trim?.()
+
+  if (perfilAtual !== perfil.toLowerCase().trim()) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   return children
 }

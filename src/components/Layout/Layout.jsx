@@ -9,16 +9,16 @@ import {
 
 const menuProfessor = [
   { path: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/alunos',      icon: Users,            label: 'Alunos' },
-  { path: '/turmas',      icon: GraduationCap,    label: 'Turmas' },
-  { path: '/frequencia',  icon: ClipboardList,    label: 'Frequência' },
-  { path: '/planos-aula', icon: BookOpen,         label: 'Planos de Aula' },
+  { path: '/turmas',      icon: GraduationCap,   label: 'Turmas' },
+  { path: '/frequencia',  icon: ClipboardList,   label: 'Frequência' },
+  { path: '/planos-aula', icon: BookOpen,        label: 'Planos de Aula' },
 ]
 
 const menuDiretor = [
   ...menuProfessor,
-  { path: '/relatorios',  icon: FileText,         label: 'Relatórios' },
-  { path: '/diretor',     icon: BarChart2,        label: 'Painel Diretor' },
+  { path: '/alunos',      icon: Users,           label: 'Alunos' },
+  { path: '/relatorios',  icon: FileText,        label: 'Relatórios' },
+  { path: '/diretor',     icon: BarChart2,       label: 'Painel Diretor' },
 ]
 
 export default function Layout() {

@@ -30,6 +30,13 @@ const ESCOLAS = [
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
 
+function mascararTelefone(telefone) {
+  if (!telefone) return '***'
+  const numeros = String(telefone).replace(/\D/g, '')
+  if (numeros.length < 4) return '***'
+  return `*** *** ${numeros.slice(-4)}`
+}
+
 function normalizarProgramaSocial(valor) {
   if (Array.isArray(valor)) return valor.filter(Boolean)
 
@@ -61,8 +68,6 @@ function extrairOficinasAnoAtual(matriculasOficinas) {
 
   return [...new Set(fallback)]
 }
-
-// ─── MODAL EDIÇÃO ─────────────────────────────────────────────────────────────
 
 function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
   const [form, setForm] = useState({
@@ -536,8 +541,6 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
   )
 }
 
-// ─── MODAL CONFIRMAÇÃO (toggle status) ───────────────────────────────────────
-
 function ModalConfirmacao({ aluno, onClose, onConfirmar }) {
   const [loading, setLoading] = useState(false)
   const ativar = aluno.status === 'inativo'
@@ -588,8 +591,6 @@ function ModalConfirmacao({ aluno, onClose, onConfirmar }) {
     </div>
   )
 }
-
-// ─── MODAL EXCLUIR ────────────────────────────────────────────────────────────
 
 function ModalExcluir({ aluno, onClose, onConfirmar }) {
   const [loading, setLoading] = useState(false)
@@ -650,8 +651,6 @@ function ModalExcluir({ aluno, onClose, onConfirmar }) {
     </div>
   )
 }
-
-// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function Alunos() {
   const { isDiretor } = useAuth()
@@ -929,7 +928,7 @@ export default function Alunos() {
 
                   {responsavel && (
                     <p className="text-xs text-mis-texto2 mt-1">
-                      Resp: {responsavel.nome} · {responsavel.telefone}
+                      Resp: {responsavel.nome} · {mascararTelefone(responsavel.telefone)}
                     </p>
                   )}
                 </div>

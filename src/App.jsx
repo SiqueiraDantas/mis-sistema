@@ -3,55 +3,77 @@ import { AuthProvider } from './contexts/AuthContext'
 import { PrivateRoute, RoleRoute } from './routes/PrivateRoute'
 
 // Auth
-import Login           from './pages/Auth/Login'
+import Login from './pages/Auth/Login'
 import RecoverPassword from './pages/Auth/RecoverPassword'
 
 // Público
 import Matricula from './pages/Matricula/Matricula'
 
 // Interno
-import Layout             from './components/Layout/Layout'
+import Layout from './components/Layout/Layout'
 import ProfessorDashboard from './pages/Dashboard/ProfessorDashboard'
-import DiretorDashboard   from './pages/Dashboard/DiretorDashboard'
-import PlanosAula         from './pages/PlanosAula/PlanosAula'
-import Frequencia         from './pages/Frequencia/Frequencia'
-import Alunos             from './pages/Alunos/Alunos'
-import Turmas             from './pages/Turmas/Turmas'
-import Relatorios         from './pages/Diretor/Relatorios'
+import DiretorDashboard from './pages/Dashboard/DiretorDashboard'
+import PlanosAula from './pages/PlanosAula/PlanosAula'
+import Frequencia from './pages/Frequencia/Frequencia'
+import Alunos from './pages/Alunos/Alunos'
+import Turmas from './pages/Turmas/Turmas'
+import Relatorios from './pages/Diretor/Relatorios'
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* PÚBLICO — sem login */}
+          {/* PÚBLICO */}
           <Route path="/matricula" element={<Matricula />} />
 
           {/* AUTH */}
-          <Route path="/login"           element={<Login />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/recuperar-senha" element={<RecoverPassword />} />
 
-          {/* SISTEMA INTERNO — com login */}
-          <Route path="/" element={
-            <PrivateRoute>
-              <Layout />
-            </PrivateRoute>
-          }>
+          {/* SISTEMA INTERNO */}
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <Layout />
+              </PrivateRoute>
+            }
+          >
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard"   element={<ProfessorDashboard />} />
-            <Route path="alunos"      element={<Alunos />} />
-            <Route path="turmas"      element={<Turmas />} />
+            <Route path="dashboard" element={<ProfessorDashboard />} />
+            <Route path="turmas" element={<Turmas />} />
             <Route path="planos-aula" element={<PlanosAula />} />
-            <Route path="frequencia"  element={<Frequencia />} />
-            <Route path="diretor"     element={
-              <RoleRoute perfil="diretor">
-                <DiretorDashboard />
-              </RoleRoute>
-            } />
-            <Route path="relatorios"  element={<Relatorios />} />
+            <Route path="frequencia" element={<Frequencia />} />
+
+            <Route
+              path="alunos"
+              element={
+                <RoleRoute perfil="diretor">
+                  <Alunos />
+                </RoleRoute>
+              }
+            />
+
+            <Route
+              path="diretor"
+              element={
+                <RoleRoute perfil="diretor">
+                  <DiretorDashboard />
+                </RoleRoute>
+              }
+            />
+
+            <Route
+              path="relatorios"
+              element={
+                <RoleRoute perfil="diretor">
+                  <Relatorios />
+                </RoleRoute>
+              }
+            />
           </Route>
 
-          {/* Fallback */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
