@@ -3,7 +3,7 @@ import { supabase } from '../../services/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   Search, UserCheck, UserX, ChevronRight,
-  X, Save, AlertCircle, Users, SlidersHorizontal, Check, Trash2
+  X, Save, AlertCircle, Users, SlidersHorizontal, Check, Trash2, ArrowDownUp
 } from 'lucide-react'
 
 const OFICINAS = [
@@ -67,6 +67,22 @@ function extrairOficinasAnoAtual(matriculasOficinas) {
     .filter(Boolean)
 
   return [...new Set(fallback)]
+}
+
+function tempoRelativo(dataStr) {
+  if (!dataStr) return ''
+  const agora = new Date()
+  const data = new Date(dataStr)
+  const diffMs = agora - data
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHoras = Math.floor(diffMs / 3600000)
+  const diffDias = Math.floor(diffMs / 86400000)
+
+  if (diffMin < 1) return 'agora'
+  if (diffMin < 60) return `${diffMin}min atrás`
+  if (diffHoras < 24) return `${diffHoras}h atrás`
+  if (diffDias < 7) return `${diffDias}d atrás`
+  return data.toLocaleDateString('pt-BR')
 }
 
 function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
@@ -664,6 +680,7 @@ export default function Alunos() {
   const [filtroStatus, setFiltroStatus] = useState('ativo')
   const [filtroOficina, setFiltroOficina] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
+  const [ordenacao, setOrdenacao] = useState('nome')
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
   const [alunoEditar, setAlunoEditar] = useState(null)
   const [alunoToggle, setAlunoToggle] = useState(null)
@@ -700,7 +717,12 @@ export default function Alunos() {
           )
         `)
         .eq('ano_letivo', ANO_ATUAL)
-        .order('nome')
+
+      if (ordenacao === 'recentes') {
+        query = query.order('created_at', { ascending: false })
+      } else {
+        query = query.order('nome')
+      }
 
       if (filtroStatus) query = query.eq('status', filtroStatus)
       if (filtroTipo) query = query.eq('tipo', filtroTipo)
@@ -727,7 +749,7 @@ export default function Alunos() {
     } finally {
       setLoading(false)
     }
-  }, [busca, filtroStatus, filtroOficina, filtroTipo])
+  }, [busca, filtroStatus, filtroOficina, filtroTipo, ordenacao])
 
   useEffect(() => {
     const t = setTimeout(buscarAlunos, 300)
@@ -793,10 +815,11 @@ export default function Alunos() {
     setFiltroStatus('ativo')
     setFiltroOficina('')
     setFiltroTipo('')
+    setOrdenacao('nome')
     setBusca('')
   }
 
-  const filtrosAtivos = filtroStatus !== 'ativo' || filtroOficina || filtroTipo
+  const filtrosAtivos = filtroStatus !== 'ativo' || filtroOficina || filtroTipo || ordenacao !== 'nome'
 
   return (
     <div className="animate-fade-in">
@@ -820,6 +843,17 @@ export default function Alunos() {
               onChange={e => setBusca(e.target.value)}
             />
           </div>
+
+          <button
+            onClick={() => setOrdenacao(o => o === 'nome' ? 'recentes' : 'nome')}
+            className={`btn-secondary flex items-center gap-2 px-3 ${ordenacao === 'recentes' ? 'border-amarelo text-amarelo' : ''}`}
+            title={ordenacao === 'nome' ? 'Ordenar por mais recentes' : 'Ordenar por nome'}
+          >
+            <ArrowDownUp size={16} />
+            <span className="hidden md:inline text-sm">
+              {ordenacao === 'recentes' ? 'Recentes' : 'A-Z'}
+            </span>
+          </button>
 
           <button
             onClick={() => setMostrarFiltros(!mostrarFiltros)}
@@ -915,7 +949,12 @@ export default function Alunos() {
                     </span>
                   </div>
 
-                  <p className="text-xs text-mis-texto2 mt-0.5 font-mono">{aluno.numero_matricula}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-xs text-mis-texto2 font-mono">{aluno.numero_matricula}</p>
+                    {ordenacao === 'recentes' && aluno.created_at && (
+                      <span className="text-xs text-amarelo">· {tempoRelativo(aluno.created_at)}</span>
+                    )}
+                  </div>
 
                   {oficinas.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
