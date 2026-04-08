@@ -11,8 +11,6 @@ import {
   Users,
 } from 'lucide-react'
 
-// ─── DADOS ───────────────────────────────────────────────────────────────────
-
 const OFICINAS = [
   'Flauta Doce', 'Clarinete', 'Trompete', 'Trombone', 'Saxofone',
   'Trompa', 'Euphonio', 'Tuba', 'Percussão', 'Bateria',
@@ -69,14 +67,6 @@ const BAIRROS = [
 
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
-
-function gerarNumeroMatricula(tipo, sequencial) {
-  const letra = tipo === 'rematricula' ? 'B' : 'A'
-  const seq = String(sequencial).padStart(4, '0')
-  return `${ANO_ATUAL}-${letra}-MAD-${seq}`
-}
-
-// ─── COMPONENTES AUXILIARES ──────────────────────────────────────────────────
 
 function StepIndicator({ step, total }) {
   return (
@@ -139,8 +129,6 @@ function Select({ label, required, error, children, ...props }) {
     </div>
   )
 }
-
-// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function Matricula() {
   const [step, setStep] = useState(1)
@@ -267,42 +255,54 @@ export default function Matricula() {
         throw new Error('Nenhuma oficina foi selecionada.')
       }
 
-      const { count, error: errCount } = await supabase
-        .from('alunos')
-        .select('*', { count: 'exact', head: true })
-        .eq('ano_letivo', ANO_ATUAL)
+      const numMatricula = `${ANO_ATUAL}-${form.tipo_matricula === 'rematricula' ? 'B' : 'A'}-MAD-${Date.now().toString().slice(-6)}`
 
-      if (errCount) throw errCount
-
-      const seq = (count || 0) + 1
-      const numMatricula = gerarNumeroMatricula(form.tipo_matricula, seq)
-
-      const { data: aluno, error: errAluno } = await supabase
+      const { error: errAluno } = await supabase
         .from('alunos')
         .insert({
           numero_matricula: numMatricula,
           tipo: form.tipo_matricula,
           nome: form.nome.trim(),
+          cpf: form.cpf.trim(),
+          telefone: form.telefone.trim(),
+          idade: form.idade ? Number(form.idade) : null,
           data_nascimento: null,
-          sexo: form.sexo === 'Masculino' ? 'M' : form.sexo === 'Feminino' ? 'F' : 'Outro',
+          sexo:
+            form.sexo === 'Masculino'
+              ? 'M'
+              : form.sexo === 'Feminino'
+                ? 'F'
+                : 'O',
           raca: form.raca,
           religiao: form.religiao || null,
+          bairro: form.bairro,
           rede_ensino: form.rede_ensino,
           escola_origem: form.escola,
           programa_social: form.programas_sociais,
-          integrantes_familia: form.integrantes_familia ? Number(form.integrantes_familia) : null,
+          integrantes_familia: form.integrantes_familia
+            ? Number(form.integrantes_familia)
+            : null,
+          pcd: form.pcd === 'sim',
           status: 'ativo',
           ano_letivo: ANO_ATUAL,
         })
-        .select()
-        .single()
 
       if (errAluno) throw errAluno
+
+      const { data: alunoBuscado, error: errBuscaAluno } = await supabase
+        .from('alunos')
+        .select('id, numero_matricula')
+        .eq('numero_matricula', numMatricula)
+        .order('id', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (errBuscaAluno) throw errBuscaAluno
 
       const { error: errResponsavel } = await supabase
         .from('responsaveis')
         .insert({
-          aluno_id: aluno.id,
+          aluno_id: alunoBuscado.id,
           nome: form.resp_nome.trim(),
           telefone: form.resp_telefone.trim(),
           email: form.resp_email?.trim() || null,
@@ -328,18 +328,18 @@ export default function Matricula() {
       }
 
       const payloadOficinas = oficinasDB.map(oficina => ({
-        aluno_id: aluno.id,
+        aluno_id: alunoBuscado.id,
         oficina_id: oficina.id,
         ano_letivo: ANO_ATUAL,
       }))
 
-      const { error: errMatriculas } = await supabase
-        .from('matriculas_oficinas')
-        .insert(payloadOficinas)
-
+     const { error: errMatriculas } = await supabase
+  .from('matriculas_oficinas')
+  .upsert(payloadOficinas, { onConflict: 'aluno_id,oficina_id,ano_letivo' })
+  
       if (errMatriculas) throw errMatriculas
 
-      setNumeroMatricula(numMatricula)
+      setNumeroMatricula(alunoBuscado.numero_matricula)
       setEnviado(true)
       window.scrollTo(0, 0)
     } catch (err) {
@@ -349,8 +349,6 @@ export default function Matricula() {
       setLoading(false)
     }
   }
-
-  // ── TELA DE SUCESSO ─────────────────────────────────────────────────────────
 
   if (enviado) {
     return (
@@ -394,8 +392,6 @@ export default function Matricula() {
       </div>
     )
   }
-
-  // ── FORMULÁRIO ──────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-mis-bg py-8 px-4">
