@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -27,8 +27,29 @@ const ESCOLAS = [
   'IFCE Campus Boa Viagem',
 ]
 
+const BAIRROS = [
+  'Centro', 'Santa Teresinha', 'Henrique Jorge', 'São José', 'Boa Vista',
+  'Alto da Alegria', 'Bairro dos Pinhos', 'Nova Madalena', 'Madalena Velha',
+  'Santana', 'Macaoca', 'Cajazeiras', 'União', 'Cacimba Nova', 'Paus Branco',
+]
+
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
+
+function calcularIdade(aluno) {
+  if (Number.isFinite(Number(aluno.idade)) && Number(aluno.idade) > 0) {
+    return Number(aluno.idade)
+  }
+  if (aluno.data_nascimento) {
+    const nascimento = new Date(aluno.data_nascimento)
+    const hoje = new Date()
+    let idade = hoje.getFullYear() - nascimento.getFullYear()
+    const m = hoje.getMonth() - nascimento.getMonth()
+    if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) idade--
+    if (idade > 0 && idade < 120) return idade
+  }
+  return null
+}
 
 function mascararTelefone(telefone) {
   if (!telefone) return '***'
@@ -39,33 +60,20 @@ function mascararTelefone(telefone) {
 
 function normalizarProgramaSocial(valor) {
   if (Array.isArray(valor)) return valor.filter(Boolean)
-
   if (typeof valor === 'string' && valor.trim()) {
-    return valor
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean)
+    return valor.split(',').map(item => item.trim()).filter(Boolean)
   }
-
   return []
 }
 
 function extrairOficinasAnoAtual(matriculasOficinas) {
   const registros = Array.isArray(matriculasOficinas) ? matriculasOficinas : []
-
   const oficinasAnoAtual = registros
     .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
     .map(item => item?.oficinas?.nome)
     .filter(Boolean)
-
-  if (oficinasAnoAtual.length > 0) {
-    return [...new Set(oficinasAnoAtual)]
-  }
-
-  const fallback = registros
-    .map(item => item?.oficinas?.nome)
-    .filter(Boolean)
-
+  if (oficinasAnoAtual.length > 0) return [...new Set(oficinasAnoAtual)]
+  const fallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
   return [...new Set(fallback)]
 }
 
@@ -77,7 +85,6 @@ function tempoRelativo(dataStr) {
   const diffMin = Math.floor(diffMs / 60000)
   const diffHoras = Math.floor(diffMs / 3600000)
   const diffDias = Math.floor(diffMs / 86400000)
-
   if (diffMin < 1) return 'agora'
   if (diffMin < 60) return `${diffMin}min atrás`
   if (diffHoras < 24) return `${diffHoras}h atrás`
@@ -86,14 +93,21 @@ function tempoRelativo(dataStr) {
 }
 
 function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
+  const scrollRef = useRef(null)
+
   const [form, setForm] = useState({
     nome: aluno.nome || '',
-    escola_origem: aluno.escola_origem || '',
-    rede_ensino: aluno.rede_ensino || '',
+    idade: aluno.idade || '',
+    cpf: aluno.cpf || '',
+    telefone: aluno.telefone || '',
     sexo: aluno.sexo === 'M' ? 'Masculino' : aluno.sexo === 'F' ? 'Feminino' : 'Outro',
     raca: aluno.raca || '',
     religiao: aluno.religiao || '',
+    bairro: aluno.bairro || '',
+    escola_origem: aluno.escola_origem || '',
+    rede_ensino: aluno.rede_ensino || '',
     tipo: aluno.tipo || 'matricula',
+    pcd: aluno.pcd === true ? 'sim' : 'nao',
     programa_social: normalizarProgramaSocial(aluno.programa_social),
     integrantes_familia: aluno.integrantes_familia || '',
     oficinas: [],
@@ -105,6 +119,12 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
   const [loadingOficinas, setLoadingOficinas] = useState(true)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0
+    }
+  }, [])
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -122,13 +142,10 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
   function togglePrograma(programa) {
     setForm(f => {
       let lista = [...f.programa_social]
-
       if (programa === 'Nenhum') {
         return { ...f, programa_social: lista.includes('Nenhum') ? [] : ['Nenhum'] }
       }
-
       lista = lista.filter(item => item !== 'Nenhum')
-
       return {
         ...f,
         programa_social: lista.includes(programa)
@@ -140,120 +157,92 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
 
   useEffect(() => {
     let ativo = true
-
     async function carregarOficinasAluno() {
       setLoadingOficinas(true)
-
       try {
         const { data, error } = await supabase
           .from('matriculas_oficinas')
-          .select(`
-            ano_letivo,
-            oficinas (nome)
-          `)
+          .select(`ano_letivo, oficinas (nome)`)
           .eq('aluno_id', aluno.id)
-
-        console.log('DEBUG - Oficinas do aluno:', aluno.nome, 'ID:', aluno.id, 'Data:', data)
-
         if (error) throw error
-
         const registros = data || []
-
         const oficinasAnoAtual = registros
           .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
           .map(item => item?.oficinas?.nome)
           .filter(Boolean)
-
-        const oficinasFallback = registros
-          .map(item => item?.oficinas?.nome)
-          .filter(Boolean)
-
-        const oficinasCarregadas =
-          oficinasAnoAtual.length > 0 ? oficinasAnoAtual : oficinasFallback
-
-        console.log('DEBUG - Oficinas carregadas:', oficinasCarregadas)
-
-        if (ativo) {
-          setForm(f => ({
-            ...f,
-            oficinas: [...new Set(oficinasCarregadas)]
-          }))
-        }
+        const oficinasFallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
+        const oficinasCarregadas = oficinasAnoAtual.length > 0 ? oficinasAnoAtual : oficinasFallback
+        if (ativo) setForm(f => ({ ...f, oficinas: [...new Set(oficinasCarregadas)] }))
       } catch (e) {
         console.error('Erro ao carregar oficinas do aluno:', e)
       } finally {
         if (ativo) setLoadingOficinas(false)
       }
     }
-
     carregarOficinasAluno()
-
-    return () => {
-      ativo = false
-    }
+    return () => { ativo = false }
   }, [aluno.id])
 
   async function salvar() {
-    if (!form.nome.trim()) {
-      setErro('Nome obrigatório')
-      return
-    }
-
+    if (!form.nome.trim()) { setErro('Nome obrigatório'); return }
     setLoading(true)
     setErro('')
-
     try {
-      const sexoMap = {
-        Masculino: 'M',
-        Feminino: 'F',
-        Outro: 'Outro'
-      }
+      const sexoMap = { Masculino: 'M', Feminino: 'F', Outro: 'Outro' }
 
       const { error: errorAluno } = await supabase
         .from('alunos')
         .update({
           nome: form.nome.trim(),
+          idade: form.idade ? Number(form.idade) : null,
+          cpf: form.cpf?.trim() || null,
+          telefone: form.telefone?.trim() || null,
           escola_origem: form.escola_origem || null,
           rede_ensino: form.rede_ensino || null,
+          bairro: form.bairro || null,
           sexo: sexoMap[form.sexo] || null,
           raca: form.raca || null,
           religiao: form.religiao || null,
           tipo: form.tipo || 'matricula',
+          pcd: form.pcd === 'sim',
           programa_social: Array.isArray(form.programa_social) ? form.programa_social : [],
           integrantes_familia: form.integrantes_familia ? Number(form.integrantes_familia) : null,
         })
         .eq('id', aluno.id)
-
       if (errorAluno) throw errorAluno
-
-      const { error: errorDeleteOficinas } = await supabase
-        .from('matriculas_oficinas')
-        .delete()
-        .eq('aluno_id', aluno.id)
-        .eq('ano_letivo', ANO_ATUAL)
-
-      if (errorDeleteOficinas) throw errorDeleteOficinas
 
       if (form.oficinas.length > 0) {
         const { data: ofs, error: errorBuscaOficinas } = await supabase
           .from('oficinas')
           .select('id, nome')
           .in('nome', form.oficinas)
-
         if (errorBuscaOficinas) throw errorBuscaOficinas
 
         if (ofs?.length > 0) {
-          const payload = ofs.map(oficina => ({
-            aluno_id: aluno.id,
-            oficina_id: oficina.id,
-            ano_letivo: ANO_ATUAL
-          }))
-
-          const { error: errorInsertOficinas } = await supabase
+          // Busca oficinas que o aluno já tem nesse ano
+          const { data: jaMatriculado } = await supabase
             .from('matriculas_oficinas')
-            .insert(payload)
+            .select('oficina_id')
+            .eq('aluno_id', aluno.id)
+            .eq('ano_letivo', ANO_ATUAL)
 
-          if (errorInsertOficinas) throw errorInsertOficinas
+          const idsExistentes = (jaMatriculado || []).map(m => m.oficina_id)
+
+          // Só insere as novas
+          const novas = ofs
+            .filter(oficina => !idsExistentes.includes(oficina.id))
+            .map(oficina => ({
+              aluno_id: aluno.id,
+              oficina_id: oficina.id,
+              ano_letivo: ANO_ATUAL
+            }))
+
+          if (novas.length > 0) {
+            const { error: errorInsertOficinas } = await supabase
+              .from('matriculas_oficinas')
+              .insert(novas)
+            if (errorInsertOficinas) throw errorInsertOficinas
+          }
         }
       }
 
@@ -266,7 +255,6 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
             email: form.resp_email || null,
           })
           .eq('id', aluno.responsaveis[0].id)
-
         if (errorResponsavel) throw errorResponsavel
       }
 
@@ -280,281 +268,272 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[9999] overflow-y-auto">
-      <div className="min-h-full flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-lg bg-mis-bg2 border border-mis-borda rounded-xl2 animate-fade-in">
-          <div className="flex items-center justify-between p-5 border-b border-mis-borda">
-            <div>
-              <h2 className="text-base font-bold text-mis-texto">Editar Aluno</h2>
-              <p className="text-xs text-mis-texto2 mt-0.5">{aluno.numero_matricula}</p>
-            </div>
-            <button onClick={onClose} className="text-mis-texto2 hover:text-mis-texto">
-              <X size={20} />
-            </button>
+    <div className="fixed inset-0 bg-black/70 z-[9999] flex items-start justify-center overflow-y-auto">
+      <div ref={scrollRef} className="w-full max-w-lg bg-mis-bg2 border border-mis-borda rounded-xl2 animate-fade-in my-8 mx-4">
+
+        <div className="flex items-center justify-between p-5 border-b border-mis-borda">
+          <div>
+            <h2 className="text-base font-bold text-mis-texto">Editar Aluno</h2>
+            <p className="text-xs text-mis-texto2 mt-0.5">{aluno.numero_matricula}</p>
+            {calcularIdade(aluno) !== null && (
+              <span className="inline-block mt-1.5 bg-amarelo/15 border border-amarelo/40 text-amarelo text-xs font-bold px-2 py-0.5 rounded-full">
+                {calcularIdade(aluno)} anos
+              </span>
+            )}
           </div>
+          <button onClick={onClose} className="text-mis-texto2 hover:text-mis-texto">
+            <X size={20} />
+          </button>
+        </div>
 
-          <div className="p-5 space-y-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
-                Dados do Aluno
-              </p>
+        <div className="p-5 space-y-5">
 
-              <div className="space-y-3">
-                <div>
-                  <label className="mis-label">Nome completo</label>
-                  <input
-                    className="mis-input"
-                    value={form.nome}
-                    onChange={e => set('nome', e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mis-label">Sexo</label>
-                    <select
-                      className="mis-input"
-                      value={form.sexo}
-                      onChange={e => set('sexo', e.target.value)}
-                    >
-                      <option value="">Selecione</option>
-                      <option>Masculino</option>
-                      <option>Feminino</option>
-                      <option>Outro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mis-label">Raça</label>
-                    <select
-                      className="mis-input"
-                      value={form.raca}
-                      onChange={e => set('raca', e.target.value)}
-                    >
-                      <option value="">Selecione</option>
-                      <option>Branca</option>
-                      <option>Preta</option>
-                      <option>Parda</option>
-                      <option>Amarela</option>
-                      <option>Indígena</option>
-                      <option>Prefiro não informar</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mis-label">Religião</label>
-                  <select
-                    className="mis-input"
-                    value={form.religiao}
-                    onChange={e => set('religiao', e.target.value)}
-                  >
-                    <option value="">Selecione (opcional)</option>
-                    <option>Católica</option>
-                    <option>Evangélica</option>
-                    <option>Espírita</option>
-                    <option>Umbanda/Candomblé</option>
-                    <option>Sem religião</option>
-                    <option>Outra</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mis-label">Escola onde estuda</label>
-                  <select
-                    className="mis-input"
-                    value={form.escola_origem}
-                    onChange={e => set('escola_origem', e.target.value)}
-                  >
-                    <option value="">Selecione</option>
-                    {ESCOLAS.map(escola => (
-                      <option key={escola}>{escola}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mis-label">Rede de Ensino</label>
-                    <select
-                      className="mis-input"
-                      value={form.rede_ensino}
-                      onChange={e => set('rede_ensino', e.target.value)}
-                    >
-                      <option value="">Selecione</option>
-                      <option>Pública</option>
-                      <option>Privada</option>
-                      <option>Não estuda</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mis-label">Tipo de Matrícula</label>
-                    <select
-                      className="mis-input"
-                      value={form.tipo}
-                      onChange={e => set('tipo', e.target.value)}
-                    >
-                      <option value="matricula">Matrícula</option>
-                      <option value="rematricula">Rematrícula</option>
-                    </select>
-                  </div>
-                </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
+              Dados do Aluno
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="mis-label">Nome completo</label>
+                <input className="mis-input" value={form.nome} onChange={e => set('nome', e.target.value)} />
               </div>
-            </div>
 
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
-                Oficinas
-              </p>
-
-              {loadingOficinas ? (
-                <div className="text-xs text-mis-texto2">
-                  Carregando oficinas do aluno...
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {OFICINAS.map(oficina => (
-                    <button
-                      key={oficina}
-                      type="button"
-                      onClick={() => toggleOficina(oficina)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left border transition-all
-                        ${form.oficinas.includes(oficina)
-                          ? 'bg-amarelo/15 border-amarelo text-amarelo'
-                          : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-amarelo/40'}`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
-                          ${form.oficinas.includes(oficina)
-                            ? 'bg-amarelo border-amarelo'
-                            : 'border-mis-borda'}`}
-                      >
-                        {form.oficinas.includes(oficina) && (
-                          <Check size={10} className="text-black" />
-                        )}
-                      </div>
-                      {oficina}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
-                Responsável
-              </p>
-
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mis-label">Nome</label>
-                  <input
-                    className="mis-input"
-                    value={form.resp_nome}
-                    onChange={e => set('resp_nome', e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mis-label">Telefone</label>
-                    <input
-                      className="mis-input"
-                      value={form.resp_telefone}
-                      onChange={e => set('resp_telefone', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mis-label">E-mail</label>
-                    <input
-                      className="mis-input"
-                      type="email"
-                      value={form.resp_email}
-                      onChange={e => set('resp_email', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mis-label">Nº Integrantes na Família</label>
+                  <label className="mis-label">Idade</label>
                   <input
                     className="mis-input"
                     type="number"
-                    min="1"
-                    value={form.integrantes_familia}
-                    onChange={e => set('integrantes_familia', e.target.value)}
+                    min="8"
+                    max="18"
+                    placeholder="Ex: 14"
+                    value={form.idade}
+                    onChange={e => set('idade', e.target.value)}
                   />
                 </div>
-
                 <div>
-                  <label className="mis-label">Programas Sociais</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    {PROGRAMAS_SOCIAIS.map(programa => (
-                      <button
-                        key={programa}
-                        type="button"
-                        onClick={() => togglePrograma(programa)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all
-                          ${form.programa_social.includes(programa)
-                            ? 'bg-azul/15 border-azul text-azul-light'
-                            : 'bg-mis-bg3 border-mis-borda text-mis-texto2'}`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
-                            ${form.programa_social.includes(programa)
-                              ? 'bg-azul border-azul'
-                              : 'border-mis-borda'}`}
-                        >
-                          {form.programa_social.includes(programa) && (
-                            <Check size={10} className="text-white" />
-                          )}
-                        </div>
-                        {programa}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="mis-label">CPF</label>
+                  <input
+                    className="mis-input"
+                    placeholder="000.000.000-00"
+                    value={form.cpf}
+                    onChange={e => set('cpf', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mis-label">Telefone</label>
+                <input
+                  className="mis-input"
+                  placeholder="(00) 00000-0000"
+                  value={form.telefone}
+                  onChange={e => set('telefone', e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mis-label">Sexo</label>
+                  <select className="mis-input" value={form.sexo} onChange={e => set('sexo', e.target.value)}>
+                    <option value="">Selecione</option>
+                    <option>Masculino</option>
+                    <option>Feminino</option>
+                    <option>Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mis-label">Raça</label>
+                  <select className="mis-input" value={form.raca} onChange={e => set('raca', e.target.value)}>
+                    <option value="">Selecione</option>
+                    <option>Branca</option>
+                    <option>Preta</option>
+                    <option>Parda</option>
+                    <option>Amarela</option>
+                    <option>Indígena</option>
+                    <option>Prefiro não informar</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mis-label">Religião</label>
+                <select className="mis-input" value={form.religiao} onChange={e => set('religiao', e.target.value)}>
+                  <option value="">Selecione (opcional)</option>
+                  <option>Católica</option>
+                  <option>Evangélica</option>
+                  <option>Espírita</option>
+                  <option>Umbanda/Candomblé</option>
+                  <option>Sem religião</option>
+                  <option>Outra</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mis-label">Bairro onde mora</label>
+                <select className="mis-input" value={form.bairro} onChange={e => set('bairro', e.target.value)}>
+                  <option value="">Selecione</option>
+                  {BAIRROS.map(b => <option key={b}>{b}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="mis-label">Escola onde estuda</label>
+                <select className="mis-input" value={form.escola_origem} onChange={e => set('escola_origem', e.target.value)}>
+                  <option value="">Selecione</option>
+                  {ESCOLAS.map(escola => <option key={escola}>{escola}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mis-label">Rede de Ensino</label>
+                  <select className="mis-input" value={form.rede_ensino} onChange={e => set('rede_ensino', e.target.value)}>
+                    <option value="">Selecione</option>
+                    <option>Pública</option>
+                    <option>Privada</option>
+                    <option>Não estuda</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mis-label">Tipo de Matrícula</label>
+                  <select className="mis-input" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                    <option value="matricula">Matrícula</option>
+                    <option value="rematricula">Rematrícula</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mis-label">PCD (Pessoa com Deficiência)?</label>
+                <div className="flex gap-3 mt-1">
+                  {['nao', 'sim'].map(valor => (
+                    <button
+                      key={valor}
+                      type="button"
+                      onClick={() => set('pcd', valor)}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all
+                        ${form.pcd === valor
+                          ? 'bg-amarelo/15 border-amarelo text-amarelo'
+                          : 'bg-mis-bg3 border-mis-borda text-mis-texto2'}`}
+                    >
+                      {valor === 'nao' ? 'Não' : 'Sim'}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
+          </div>
 
-            {erro && (
-              <div className="bg-red-900/30 border border-red-800 text-red-400 text-xs rounded-lg px-3 py-2 flex items-center gap-2">
-                <AlertCircle size={14} />
-                {erro}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
+              Oficinas
+            </p>
+            {loadingOficinas ? (
+              <div className="text-xs text-mis-texto2">Carregando oficinas do aluno...</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {OFICINAS.map(oficina => (
+                  <button
+                    key={oficina}
+                    type="button"
+                    onClick={() => toggleOficina(oficina)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left border transition-all
+                      ${form.oficinas.includes(oficina)
+                        ? 'bg-amarelo/15 border-amarelo text-amarelo'
+                        : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-amarelo/40'}`}
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
+                      ${form.oficinas.includes(oficina) ? 'bg-amarelo border-amarelo' : 'border-mis-borda'}`}>
+                      {form.oficinas.includes(oficina) && <Check size={10} className="text-black" />}
+                    </div>
+                    {oficina}
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          <div className="flex gap-3 p-5 border-t border-mis-borda">
-            <button onClick={onClose} className="btn-secondary px-4 py-2">
-              Cancelar
-            </button>
-
-            <button
-              onClick={onExcluir}
-              className="px-4 py-2 rounded-lg border border-red-900/40 text-red-400 hover:bg-red-900/20 transition-colors flex items-center gap-2 text-sm font-semibold"
-            >
-              <Trash2 size={14} />
-              Excluir
-            </button>
-
-            <button
-              onClick={salvar}
-              disabled={loading || loadingOficinas}
-              className="btn-primary flex-1 flex items-center justify-center gap-2 py-2"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Save size={14} />
-                  Salvar Alterações
-                </>
-              )}
-            </button>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-3">
+              Responsável
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="mis-label">Nome</label>
+                <input className="mis-input" value={form.resp_nome} onChange={e => set('resp_nome', e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mis-label">Telefone</label>
+                  <input className="mis-input" value={form.resp_telefone} onChange={e => set('resp_telefone', e.target.value)} />
+                </div>
+                <div>
+                  <label className="mis-label">E-mail</label>
+                  <input className="mis-input" type="email" value={form.resp_email} onChange={e => set('resp_email', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="mis-label">Nº Integrantes na Família</label>
+                <input
+                  className="mis-input"
+                  type="number"
+                  min="1"
+                  value={form.integrantes_familia}
+                  onChange={e => set('integrantes_familia', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mis-label">Programas Sociais</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {PROGRAMAS_SOCIAIS.map(programa => (
+                    <button
+                      key={programa}
+                      type="button"
+                      onClick={() => togglePrograma(programa)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all
+                        ${form.programa_social.includes(programa)
+                          ? 'bg-azul/15 border-azul text-azul-light'
+                          : 'bg-mis-bg3 border-mis-borda text-mis-texto2'}`}
+                    >
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
+                        ${form.programa_social.includes(programa) ? 'bg-azul border-azul' : 'border-mis-borda'}`}>
+                        {form.programa_social.includes(programa) && <Check size={10} className="text-white" />}
+                      </div>
+                      {programa}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
+
+          {erro && (
+            <div className="bg-red-900/30 border border-red-800 text-red-400 text-xs rounded-lg px-3 py-2 flex items-center gap-2">
+              <AlertCircle size={14} />
+              {erro}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 p-5 border-t border-mis-borda">
+          <button onClick={onClose} className="btn-secondary px-4 py-2">Cancelar</button>
+          <button
+            onClick={onExcluir}
+            className="px-4 py-2 rounded-lg border border-red-900/40 text-red-400 hover:bg-red-900/20 transition-colors flex items-center gap-2 text-sm font-semibold"
+          >
+            <Trash2 size={14} />
+            Excluir
+          </button>
+          <button
+            onClick={salvar}
+            disabled={loading || loadingOficinas}
+            className="btn-primary flex-1 flex items-center justify-center gap-2 py-2"
+          >
+            {loading
+              ? <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              : <><Save size={14} />Salvar Alterações</>}
+          </button>
         </div>
       </div>
     </div>
@@ -566,12 +545,8 @@ function ModalConfirmacao({ aluno, onClose, onConfirmar }) {
   const ativar = aluno.status === 'inativo'
 
   async function confirmar() {
-    try {
-      setLoading(true)
-      await onConfirmar()
-    } finally {
-      setLoading(false)
-    }
+    try { setLoading(true); await onConfirmar() }
+    finally { setLoading(false) }
   }
 
   return (
@@ -580,22 +555,16 @@ function ModalConfirmacao({ aluno, onClose, onConfirmar }) {
         <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto ${ativar ? 'bg-verde/20' : 'bg-red-900/30'}`}>
           {ativar ? <UserCheck size={24} className="text-verde-light" /> : <UserX size={24} className="text-red-400" />}
         </div>
-
         <h2 className="text-base font-bold text-mis-texto text-center mb-2">
           {ativar ? 'Reativar Aluno' : 'Inativar Aluno'}
         </h2>
-
         <p className="text-sm text-mis-texto2 text-center mb-6">
           {ativar
             ? `Deseja reativar o aluno ${aluno.nome}?`
             : `Deseja inativar o aluno ${aluno.nome}? Ele não aparecerá nas turmas ativas.`}
         </p>
-
         <div className="flex gap-3">
-          <button onClick={onClose} className="btn-secondary flex-1 py-2">
-            Cancelar
-          </button>
-
+          <button onClick={onClose} className="btn-secondary flex-1 py-2">Cancelar</button>
           <button
             onClick={confirmar}
             disabled={loading}
@@ -616,12 +585,8 @@ function ModalExcluir({ aluno, onClose, onConfirmar }) {
   const [loading, setLoading] = useState(false)
 
   async function confirmar() {
-    try {
-      setLoading(true)
-      await onConfirmar()
-    } finally {
-      setLoading(false)
-    }
+    try { setLoading(true); await onConfirmar() }
+    finally { setLoading(false) }
   }
 
   return (
@@ -630,28 +595,16 @@ function ModalExcluir({ aluno, onClose, onConfirmar }) {
         <div className="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center mb-4 mx-auto">
           <Trash2 size={24} className="text-red-400" />
         </div>
-
-        <h2 className="text-base font-bold text-mis-texto text-center mb-2">
-          Excluir Aluno
-        </h2>
-
+        <h2 className="text-base font-bold text-mis-texto text-center mb-2">Excluir Aluno</h2>
         <p className="text-sm text-mis-texto2 text-center mb-1">
           Tem certeza que deseja excluir permanentemente o aluno
         </p>
-
-        <p className="text-sm font-bold text-mis-texto text-center mb-2">
-          {aluno.nome}?
-        </p>
-
+        <p className="text-sm font-bold text-mis-texto text-center mb-2">{aluno.nome}?</p>
         <p className="text-xs text-red-400 text-center mb-6">
           Esta ação não pode ser desfeita. Todos os dados, oficinas e responsáveis serão removidos.
         </p>
-
         <div className="flex gap-3">
-          <button onClick={onClose} disabled={loading} className="btn-secondary flex-1 py-2">
-            Cancelar
-          </button>
-
+          <button onClick={onClose} disabled={loading} className="btn-secondary flex-1 py-2">Cancelar</button>
           <button
             onClick={confirmar}
             disabled={loading}
@@ -659,12 +612,7 @@ function ModalExcluir({ aluno, onClose, onConfirmar }) {
           >
             {loading
               ? <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
-              : (
-                <>
-                  <Trash2 size={14} />
-                  Excluir permanentemente
-                </>
-              )}
+              : <><Trash2 size={14} />Excluir permanentemente</>}
           </button>
         </div>
       </div>
@@ -690,25 +638,11 @@ export default function Alunos() {
 
   const buscarAlunos = useCallback(async () => {
     setLoading(true)
-
     try {
       let query = supabase
         .from('alunos')
         .select(`
-          id,
-          numero_matricula,
-          nome,
-          sexo,
-          raca,
-          escola_origem,
-          rede_ensino,
-          tipo,
-          status,
-          ano_letivo,
-          programa_social,
-          integrantes_familia,
-          religiao,
-          created_at,
+          *,
           responsaveis (id, nome, telefone, email),
           matriculas_oficinas (
             oficina_id,
@@ -758,52 +692,26 @@ export default function Alunos() {
 
   async function toggleStatus(aluno) {
     const novoStatus = aluno.status === 'ativo' ? 'inativo' : 'ativo'
-
-    await supabase
-      .from('alunos')
-      .update({ status: novoStatus })
-      .eq('id', aluno.id)
-
+    await supabase.from('alunos').update({ status: novoStatus }).eq('id', aluno.id)
     setAlunoToggle(null)
     buscarAlunos()
   }
 
   async function excluirAluno(aluno) {
     if (!aluno || excluindoId) return
-
     try {
       setExcluindoId(aluno.id)
-
-      const { error: erroOficinas } = await supabase
-        .from('matriculas_oficinas')
-        .delete()
-        .eq('aluno_id', aluno.id)
-
+      const { error: erroOficinas } = await supabase.from('matriculas_oficinas').delete().eq('aluno_id', aluno.id)
       if (erroOficinas) throw erroOficinas
-
-      const { error: erroResponsaveis } = await supabase
-        .from('responsaveis')
-        .delete()
-        .eq('aluno_id', aluno.id)
-
+      const { error: erroResponsaveis } = await supabase.from('responsaveis').delete().eq('aluno_id', aluno.id)
       if (erroResponsaveis) throw erroResponsaveis
-
-      const { error: erroAluno } = await supabase
-        .from('alunos')
-        .delete()
-        .eq('id', aluno.id)
-
+      const { error: erroAluno } = await supabase.from('alunos').delete().eq('id', aluno.id)
       if (erroAluno) throw erroAluno
-
       setAlunoExcluir(null)
       setAlunoEditar(null)
-
       setAlunos(prev => prev.filter(item => item.id !== aluno.id))
       setTotal(prev => Math.max(0, prev - 1))
-
-      setTimeout(() => {
-        buscarAlunos()
-      }, 50)
+      setTimeout(() => buscarAlunos(), 50)
     } catch (e) {
       console.error('Erro ao excluir aluno:', e)
     } finally {
@@ -875,17 +783,13 @@ export default function Alunos() {
                 <option value="inativo">Inativos</option>
               </select>
             </div>
-
             <div>
               <label className="mis-label">Oficina</label>
               <select className="mis-input" value={filtroOficina} onChange={e => setFiltroOficina(e.target.value)}>
                 <option value="">Todas</option>
-                {OFICINAS.map(oficina => (
-                  <option key={oficina}>{oficina}</option>
-                ))}
+                {OFICINAS.map(oficina => <option key={oficina}>{oficina}</option>)}
               </select>
             </div>
-
             <div>
               <label className="mis-label">Tipo</label>
               <select className="mis-input" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
@@ -894,12 +798,8 @@ export default function Alunos() {
                 <option value="rematricula">Rematrícula</option>
               </select>
             </div>
-
             {filtrosAtivos && (
-              <button
-                onClick={limparFiltros}
-                className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-3 w-fit"
-              >
+              <button onClick={limparFiltros} className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-3 w-fit">
                 <X size={12} />
                 Limpar filtros
               </button>
@@ -926,6 +826,7 @@ export default function Alunos() {
           {alunos.map(aluno => {
             const oficinas = extrairOficinasAnoAtual(aluno.matriculas_oficinas)
             const responsavel = aluno.responsaveis?.[0]
+            const idade = calcularIdade(aluno)
 
             return (
               <div
@@ -951,6 +852,9 @@ export default function Alunos() {
 
                   <div className="flex items-center gap-2 mt-0.5">
                     <p className="text-xs text-mis-texto2 font-mono">{aluno.numero_matricula}</p>
+                    {idade !== null && (
+                      <span className="text-xs text-mis-texto2">· {idade} anos</span>
+                    )}
                     {ordenacao === 'recentes' && aluno.created_at && (
                       <span className="text-xs text-amarelo">· {tempoRelativo(aluno.created_at)}</span>
                     )}
@@ -959,9 +863,7 @@ export default function Alunos() {
                   {oficinas.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {oficinas.slice(0, 3).map(oficina => (
-                        <span key={oficina} className="badge badge-amarelo">
-                          {oficina}
-                        </span>
+                        <span key={oficina} className="badge badge-amarelo">{oficina}</span>
                       ))}
                       {oficinas.length > 3 && (
                         <span className="badge badge-gray">+{oficinas.length - 3}</span>
@@ -988,7 +890,6 @@ export default function Alunos() {
                     >
                       {aluno.status === 'ativo' ? <UserX size={16} /> : <UserCheck size={16} />}
                     </button>
-
                     <button
                       onClick={() => setAlunoEditar(aluno)}
                       className="p-2 rounded-lg border border-mis-borda text-mis-texto2 hover:text-mis-texto hover:border-mis-texto/30 transition-colors"
@@ -1007,17 +908,11 @@ export default function Alunos() {
         <ModalEdicao
           aluno={alunoEditar}
           onClose={() => setAlunoEditar(null)}
-          onSalvo={() => {
-            setAlunoEditar(null)
-            buscarAlunos()
-          }}
+          onSalvo={() => { setAlunoEditar(null); buscarAlunos() }}
           onExcluir={() => {
             const alunoSelecionado = alunoEditar
             setAlunoEditar(null)
-
-            setTimeout(() => {
-              setAlunoExcluir(alunoSelecionado)
-            }, 50)
+            setTimeout(() => setAlunoExcluir(alunoSelecionado), 50)
           }}
         />
       )}
@@ -1033,9 +928,7 @@ export default function Alunos() {
       {alunoExcluir && (
         <ModalExcluir
           aluno={alunoExcluir}
-          onClose={() => {
-            if (!excluindoId) setAlunoExcluir(null)
-          }}
+          onClose={() => { if (!excluindoId) setAlunoExcluir(null) }}
           onConfirmar={() => excluirAluno(alunoExcluir)}
         />
       )}
