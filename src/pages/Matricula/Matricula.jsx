@@ -333,11 +333,27 @@ export default function Matricula() {
         ano_letivo: ANO_ATUAL,
       }))
 
-     const { error: errMatriculas } = await supabase
-  .from('matriculas_oficinas')
-  .upsert(payloadOficinas, { onConflict: 'aluno_id,oficina_id,ano_letivo' })
-  
-      if (errMatriculas) throw errMatriculas
+      // Busca matrículas que o aluno já tem nesse ano
+      const { data: matriculasExistentes } = await supabase
+        .from('matriculas_oficinas')
+        .select('oficina_id')
+        .eq('aluno_id', alunoBuscado.id)
+        .eq('ano_letivo', ANO_ATUAL)
+
+      const idsJaMatriculados = (matriculasExistentes || []).map(m => m.oficina_id)
+
+      // Filtra só as oficinas novas
+      const novasOficinas = payloadOficinas.filter(
+        p => !idsJaMatriculados.includes(p.oficina_id)
+      )
+
+      if (novasOficinas.length > 0) {
+        const { error: errMatriculas } = await supabase
+          .from('matriculas_oficinas')
+          .insert(novasOficinas)
+
+        if (errMatriculas) throw errMatriculas
+      }
 
       setNumeroMatricula(alunoBuscado.numero_matricula)
       setEnviado(true)
