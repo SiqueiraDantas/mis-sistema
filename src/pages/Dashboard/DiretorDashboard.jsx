@@ -204,7 +204,7 @@ function ModalFrequencia({ onClose }) {
   const [loading, setLoading] = useState(false)
   const [loadingOficinas, setLoadingOficinas] = useState(true)
   const [erro, setErro] = useState('')
-  const [preview, setPreview] = useState(null) // { totalAulas, presencas, faltas }
+  const [preview, setPreview] = useState(null)
   const [step, setStep] = useState(1)
 
   useEffect(() => {
@@ -275,7 +275,6 @@ function ModalFrequencia({ onClose }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
       <div className="bg-mis-bg2 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-mis-borda shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-mis-borda">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-azul/15 flex items-center justify-center"><Calendar size={18} className="text-azul"/></div>
@@ -410,6 +409,43 @@ function CardExportacao({ icon: Icon, titulo, descricao, badge, cor, onClick }) 
   )
 }
 
+function CardDistribuicao({ titulo, dados = [], cor = 'bg-azul', rolavel = false }) {
+  return (
+    <div className="mis-card space-y-3">
+      <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">
+        {titulo}
+      </h4>
+
+      <div className={rolavel ? 'space-y-3 max-h-64 overflow-y-auto pr-1' : 'space-y-3'}>
+        {dados.map((item) => (
+          <div key={item.nome} className="space-y-1">
+            <div className="flex justify-between text-xs gap-2">
+              <span className="text-mis-texto truncate">
+                {item.nome}
+              </span>
+
+              <span className="font-bold text-mis-texto2 shrink-0">
+                {item.qtd} ({item.pct}%)
+              </span>
+            </div>
+
+            <div className="w-full h-2 bg-mis-borda rounded-full">
+              <div
+                className={`h-full rounded-full ${cor}`}
+                style={{ width: `${item.pct}%` }}
+              />
+            </div>
+          </div>
+        ))}
+
+        {dados.length === 0 && (
+          <p className="text-xs text-mis-texto2">Sem dados</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── DASHBOARD DIRETOR ────────────────────────────────────────────────────────
 export default function DiretorDashboard() {
   const { perfil } = useAuth()
@@ -418,14 +454,22 @@ export default function DiretorDashboard() {
   const [modalAberto, setModalAberto] = useState(false)
   const [modalFrequenciaAberto, setModalFrequenciaAberto] = useState(false)
 
-  // Novos estados
   const [freqGeral, setFreqGeral] = useState({ pct: 0, presencas: 0, faltas: 0, total: 0 })
   const [alertaFaltas, setAlertaFaltas] = useState([])
   const [resumoOficinas, setResumoOficinas] = useState([])
   const [loadingKpis, setLoadingKpis] = useState(true)
+
   const [perfisAlunos, setPerfisAlunos] = useState({
-    sexo: [], raca: [], redeEnsino: [], programaSocial: [],
-    integrantes: { media: 0, total: 0 }, tipo: [], bairros: []
+    sexo: [],
+    raca: [],
+    redeEnsino: [],
+    programaSocial: [],
+    integrantes: { media: 0, total: 0 },
+    tipo: [],
+    escolaOrigem: [],
+    religiao: [],
+    pcd: [],
+    localidades: [],
   })
 
   useEffect(() => {
@@ -455,20 +499,19 @@ export default function DiretorDashboard() {
       setStats({ alunos: alunos || 0, turmas: turmasCount || 0, oficinas: oficinas || 0 })
       setTurmas(turmasData || [])
 
-      // ── Frequência geral do mês ──────────────────────────────────────────
       const totalFreqs = (freqs || []).length
-      const presencas  = (freqs || []).filter(f => f.status === 'presente').length
-      const faltas     = (freqs || []).filter(f => f.status === 'ausente').length
-      const pct        = totalFreqs > 0 ? Math.round((presencas / totalFreqs) * 100) : 0
+      const presencas = (freqs || []).filter(f => f.status === 'presente').length
+      const faltas = (freqs || []).filter(f => f.status === 'ausente').length
+      const pct = totalFreqs > 0 ? Math.round((presencas / totalFreqs) * 100) : 0
       setFreqGeral({ pct, presencas, faltas, total: totalFreqs })
 
-      // ── Alunos com mais faltas no mês ────────────────────────────────────
       const porAluno = {}
       for (const f of (freqs || [])) {
         if (!porAluno[f.aluno_id]) porAluno[f.aluno_id] = { presencas: 0, faltas: 0 }
         if (f.status === 'presente') porAluno[f.aluno_id].presencas++
-        if (f.status === 'ausente')  porAluno[f.aluno_id].faltas++
+        if (f.status === 'ausente') porAluno[f.aluno_id].faltas++
       }
+
       const idsComFaltas = Object.entries(porAluno)
         .filter(([_, v]) => v.faltas > 0)
         .sort((a, b) => b[1].faltas - a[1].faltas)
@@ -476,58 +519,180 @@ export default function DiretorDashboard() {
         .map(([id]) => id)
 
       if (idsComFaltas.length > 0) {
-        const { data: alunosData } = await supabase.from('alunos').select('id, nome').in('id', idsComFaltas)
+        const { data: alunosData } = await supabase
+          .from('alunos')
+          .select('id, nome')
+          .in('id', idsComFaltas)
+
         const alerta = idsComFaltas.map(id => {
           const al = (alunosData || []).find(a => a.id === id)
-          const total = (porAluno[id].presencas + porAluno[id].faltas)
+          const total = porAluno[id].presencas + porAluno[id].faltas
           const pctAluno = total > 0 ? Math.round((porAluno[id].presencas / total) * 100) : 0
-          return { id, nome: al?.nome || '—', faltas: porAluno[id].faltas, presencas: porAluno[id].presencas, pct: pctAluno }
+          return {
+            id,
+            nome: al?.nome || '—',
+            faltas: porAluno[id].faltas,
+            presencas: porAluno[id].presencas,
+            pct: pctAluno
+          }
         })
+
         setAlertaFaltas(alerta)
       }
 
-      // ── Resumo por oficina ───────────────────────────────────────────────
       const resumo = (oficinasData || []).map(of => {
-        const alunosOf = new Set((matriculas || []).filter(m => m.oficina_id === of.id).map(m => m.aluno_id))
-        const freqsOf  = (freqs || []).filter(f => alunosOf.has(f.aluno_id))
-        const pOf      = freqsOf.filter(f => f.status === 'presente').length
-        const pctOf    = freqsOf.length > 0 ? Math.round((pOf / freqsOf.length) * 100) : null
-        return { nome: of.nome, alunos: alunosOf.size, pct: pctOf, aulas: freqsOf.length > 0 ? [...new Set(freqsOf.map(f => f.data_aula))].length : 0 }
+        const alunosOf = new Set(
+          (matriculas || [])
+            .filter(m => m.oficina_id === of.id)
+            .map(m => m.aluno_id)
+        )
+
+        const freqsOf = (freqs || []).filter(f => alunosOf.has(f.aluno_id))
+        const pOf = freqsOf.filter(f => f.status === 'presente').length
+        const pctOf = freqsOf.length > 0 ? Math.round((pOf / freqsOf.length) * 100) : null
+
+        return {
+          nome: of.nome,
+          alunos: alunosOf.size,
+          pct: pctOf,
+          aulas: freqsOf.length > 0 ? [...new Set(freqsOf.map(f => f.data_aula))].length : 0
+        }
       }).filter(o => o.alunos > 0)
+
       setResumoOficinas(resumo)
 
-      // ── Perfil sociodemográfico dos alunos ──────────────────────────────
-      const { data: ap } = await supabase
-        .from('alunos')
-        .select('sexo, raca, rede_ensino, programa_social, integrantes_familia, tipo, escola_origem')
-        .eq('status', 'ativo')
+      const [
+        { data: ap },
+        { data: localidadesManuais, error: erroLocalidades },
+      ] = await Promise.all([
+        supabase
+          .from('alunos')
+          .select('sexo, raca, religiao, pcd, rede_ensino, programa_social, integrantes_familia, tipo, escola_origem')
+          .eq('status', 'ativo'),
+
+        supabase
+          .from('kpi_localidades_manuais')
+          .select('localidade, quantidade_alunos')
+          .eq('ano_letivo', ANO_ATUAL),
+      ])
+
+      if (erroLocalidades) {
+        console.error('Erro ao carregar localidades:', erroLocalidades)
+      }
 
       if (ap && ap.length > 0) {
         const contagem = (campo) => {
           const map = {}
+
           ap.forEach(a => {
             const val = a[campo] || 'Não informado'
             map[val] = (map[val] || 0) + 1
           })
+
           return Object.entries(map)
-            .map(([nome, qtd]) => ({ nome, qtd, pct: Math.round((qtd / ap.length) * 100) }))
+            .map(([nome, qtd]) => ({
+              nome,
+              qtd,
+              pct: Math.round((qtd / ap.length) * 100)
+            }))
             .sort((a, b) => b.qtd - a.qtd)
         }
 
-        // programa_social é ARRAY
         const progMap = {}
+
         ap.forEach(a => {
           const progs = a.programa_social || []
-          if (progs.length === 0) { progMap['Nenhum'] = (progMap['Nenhum'] || 0) + 1 }
-          else progs.forEach(p => { progMap[p] = (progMap[p] || 0) + 1 })
+
+          if (progs.length === 0) {
+            progMap.Nenhum = (progMap.Nenhum || 0) + 1
+          } else {
+            progs.forEach(p => {
+              progMap[p] = (progMap[p] || 0) + 1
+            })
+          }
         })
+
         const programaSocial = Object.entries(progMap)
-          .map(([nome, qtd]) => ({ nome, qtd, pct: Math.round((qtd / ap.length) * 100) }))
+          .map(([nome, qtd]) => ({
+            nome,
+            qtd,
+            pct: Math.round((qtd / ap.length) * 100)
+          }))
           .sort((a, b) => b.qtd - a.qtd)
 
+        const religiaoMap = {}
+
+        ap.forEach(a => {
+          const religiao = typeof a.religiao === 'string' && a.religiao.trim()
+            ? a.religiao.trim()
+            : 'Não informado'
+
+          religiaoMap[religiao] = (religiaoMap[religiao] || 0) + 1
+        })
+
+        const religiao = Object.entries(religiaoMap)
+          .map(([nome, qtd]) => ({
+            nome,
+            qtd,
+            pct: Math.round((qtd / ap.length) * 100)
+          }))
+          .sort((a, b) => b.qtd - a.qtd)
+
+        const pcdMap = {}
+
+        ap.forEach(a => {
+          let situacao = 'Não informado'
+
+          if (a.pcd === true) {
+            situacao = 'Pessoa com deficiência'
+          } else if (a.pcd === false) {
+            situacao = 'Não PCD'
+          }
+
+          pcdMap[situacao] = (pcdMap[situacao] || 0) + 1
+        })
+
+        const pcd = Object.entries(pcdMap)
+          .map(([nome, qtd]) => ({
+            nome,
+            qtd,
+            pct: Math.round((qtd / ap.length) * 100)
+          }))
+          .sort((a, b) => b.qtd - a.qtd)
+
+        const localidadesMap = {}
+
+        ;(localidadesManuais || []).forEach(item => {
+          const nome = item.localidade?.trim() || 'Não informado'
+          const qtd = Number(item.quantidade_alunos) || 0
+
+          localidadesMap[nome] = (localidadesMap[nome] || 0) + qtd
+        })
+
+        const totalLocalidades = Object.values(localidadesMap)
+          .reduce((total, qtd) => total + qtd, 0)
+
+        const localidades = Object.entries(localidadesMap)
+          .map(([nome, qtd]) => ({
+            nome,
+            qtd,
+            pct: totalLocalidades > 0
+              ? Math.round((qtd / totalLocalidades) * 100)
+              : 0,
+          }))
+          .sort((a, b) => {
+            if (a.nome === 'Não informado') return 1
+            if (b.nome === 'Não informado') return -1
+            return b.qtd - a.qtd
+          })
+
         const mediaFamilia = ap.filter(a => a.integrantes_familia > 0)
+
         const media = mediaFamilia.length > 0
-          ? (mediaFamilia.reduce((s, a) => s + a.integrantes_familia, 0) / mediaFamilia.length).toFixed(1)
+          ? (
+              mediaFamilia.reduce((s, a) => s + a.integrantes_familia, 0) /
+              mediaFamilia.length
+            ).toFixed(1)
           : '—'
 
         setPerfisAlunos({
@@ -537,16 +702,23 @@ export default function DiretorDashboard() {
           tipo: contagem('tipo'),
           escolaOrigem: contagem('escola_origem'),
           programaSocial,
+          religiao,
+          pcd,
+          localidades,
           integrantes: { media, total: ap.length },
         })
       }
 
       setLoadingKpis(false)
     }
+
     loadData()
   }, [])
 
-  const mesAtual = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const mesAtual = new Date().toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric'
+  })
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -558,13 +730,12 @@ export default function DiretorDashboard() {
         <span className="badge badge-amarelo ml-auto">Diretor</span>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { icon: Users,         label: 'Total de Alunos', valor: stats.alunos,   cor: 'text-verde' },
-          { icon: GraduationCap, label: 'Turmas Ativas',   valor: stats.turmas,   cor: 'text-azul' },
-          { icon: BarChart2,     label: 'Oficinas',        valor: stats.oficinas, cor: 'text-amarelo' },
-          { icon: TrendingUp,    label: 'Ano Letivo',      valor: ANO_ATUAL,      cor: 'text-marrom' },
+          { icon: Users, label: 'Total de Alunos', valor: stats.alunos, cor: 'text-verde' },
+          { icon: GraduationCap, label: 'Turmas Ativas', valor: stats.turmas, cor: 'text-azul' },
+          { icon: BarChart2, label: 'Oficinas', valor: stats.oficinas, cor: 'text-amarelo' },
+          { icon: TrendingUp, label: 'Ano Letivo', valor: ANO_ATUAL, cor: 'text-marrom' },
         ].map((c, i) => (
           <div key={i} className="mis-card flex flex-col gap-2">
             <c.icon size={20} className={c.cor}/>
@@ -574,62 +745,85 @@ export default function DiretorDashboard() {
         ))}
       </div>
 
-      {/* Documentos SECULT */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <h2 className="text-sm font-bold text-mis-texto">Documentos SECULT</h2>
           <span className="badge badge-azul">Exportação</span>
         </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <CardExportacao icon={BookOpen} titulo="Plano de Curso" badge="DOCX"
+          <CardExportacao
+            icon={BookOpen}
+            titulo="Plano de Curso"
+            badge="DOCX"
             descricao="Gera o documento com cabeçalho, mini currículo do professor, plano mensal e tabela de aulas por período."
-            cor="bg-amarelo/15 text-amarelo" onClick={() => setModalAberto(true)}/>
-          <CardExportacao icon={Calendar} titulo="Frequência de Alunos" badge="DOCX"
+            cor="bg-amarelo/15 text-amarelo"
+            onClick={() => setModalAberto(true)}
+          />
+
+          <CardExportacao
+            icon={Calendar}
+            titulo="Frequência de Alunos"
+            badge="DOCX"
             descricao="Gera a tabela de presença com P/F por data para cada aluno da oficina no período selecionado."
-            cor="bg-azul/15 text-azul" onClick={() => setModalFrequenciaAberto(true)}/>
+            cor="bg-azul/15 text-azul"
+            onClick={() => setModalFrequenciaAberto(true)}
+          />
         </div>
       </div>
 
-      {/* ── Seção de KPIs ── */}
       {loadingKpis ? (
         <div className="mis-card flex items-center justify-center py-8">
           <Loader size={20} className="animate-spin text-amarelo"/>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-          {/* Frequência Geral do Mês */}
           <div className="mis-card flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Hash size={15} className="text-verde"/>
               <h3 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Frequência do Mês</h3>
             </div>
+
             <p className="text-xs text-mis-texto2 capitalize">{mesAtual}</p>
 
-            {/* Anel de progresso visual */}
             <div className="flex items-center gap-4">
               <div className="relative w-16 h-16 shrink-0">
                 <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
                   <circle cx="32" cy="32" r="26" fill="none" stroke="#1f2937" strokeWidth="8"/>
-                  <circle cx="32" cy="32" r="26" fill="none"
+                  <circle
+                    cx="32"
+                    cy="32"
+                    r="26"
+                    fill="none"
                     stroke={freqGeral.pct >= 75 ? '#10B981' : freqGeral.pct >= 50 ? '#F59E0B' : '#EF4444'}
                     strokeWidth="8"
                     strokeDasharray={`${(freqGeral.pct / 100) * 163} 163`}
-                    strokeLinecap="round"/>
+                    strokeLinecap="round"
+                  />
                 </svg>
-                <span className={`absolute inset-0 flex items-center justify-center text-sm font-black ${freqGeral.pct >= 75 ? 'text-verde' : freqGeral.pct >= 50 ? 'text-amarelo' : 'text-red-400'}`}>
+
+                <span className={`absolute inset-0 flex items-center justify-center text-sm font-black ${
+                  freqGeral.pct >= 75
+                    ? 'text-verde'
+                    : freqGeral.pct >= 50
+                      ? 'text-amarelo'
+                      : 'text-red-400'
+                }`}>
                   {freqGeral.pct}%
                 </span>
               </div>
+
               <div className="space-y-1.5 flex-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-mis-texto2">Presenças</span>
                   <span className="font-bold text-verde">{freqGeral.presencas}</span>
                 </div>
+
                 <div className="flex justify-between text-xs">
                   <span className="text-mis-texto2">Faltas</span>
                   <span className="font-bold text-red-400">{freqGeral.faltas}</span>
                 </div>
+
                 <div className="flex justify-between text-xs">
                   <span className="text-mis-texto2">Total reg.</span>
                   <span className="font-bold text-mis-texto">{freqGeral.total}</span>
@@ -642,12 +836,12 @@ export default function DiretorDashboard() {
             )}
           </div>
 
-          {/* Alunos com mais faltas */}
           <div className="mis-card flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <AlertCircle size={15} className="text-red-400"/>
               <h3 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Alerta de Faltas</h3>
             </div>
+
             <p className="text-xs text-mis-texto2">Alunos com mais ausências no mês</p>
 
             {alertaFaltas.length === 0 ? (
@@ -657,19 +851,40 @@ export default function DiretorDashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {alertaFaltas.map((al, i) => (
+                {alertaFaltas.map(al => (
                   <div key={al.id} className="flex items-center gap-2">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${al.pct < 75 ? 'bg-red-900/40 text-red-400' : 'bg-amarelo/20 text-amarelo'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                      al.pct < 75
+                        ? 'bg-red-900/40 text-red-400'
+                        : 'bg-amarelo/20 text-amarelo'
+                    }`}>
                       {al.faltas}
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-mis-texto truncate">{al.nome}</p>
+
                       <div className="w-full h-1 bg-mis-borda rounded-full mt-0.5">
-                        <div className={`h-full rounded-full ${al.pct >= 75 ? 'bg-verde' : al.pct >= 50 ? 'bg-amarelo' : 'bg-red-500'}`}
-                          style={{ width: `${al.pct}%` }}/>
+                        <div
+                          className={`h-full rounded-full ${
+                            al.pct >= 75
+                              ? 'bg-verde'
+                              : al.pct >= 50
+                                ? 'bg-amarelo'
+                                : 'bg-red-500'
+                          }`}
+                          style={{ width: `${al.pct}%` }}
+                        />
                       </div>
                     </div>
-                    <span className={`text-xs font-bold shrink-0 ${al.pct >= 75 ? 'text-verde' : al.pct >= 50 ? 'text-amarelo' : 'text-red-400'}`}>
+
+                    <span className={`text-xs font-bold shrink-0 ${
+                      al.pct >= 75
+                        ? 'text-verde'
+                        : al.pct >= 50
+                          ? 'text-amarelo'
+                          : 'text-red-400'
+                    }`}>
                       {al.pct}%
                     </span>
                   </div>
@@ -678,12 +893,12 @@ export default function DiretorDashboard() {
             )}
           </div>
 
-          {/* Resumo por oficina */}
           <div className="mis-card flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Clock size={15} className="text-azul"/>
               <h3 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Resumo por Oficina</h3>
             </div>
+
             <p className="text-xs text-mis-texto2">Alunos e frequência no mês</p>
 
             {resumoOficinas.length === 0 ? (
@@ -697,13 +912,32 @@ export default function DiretorDashboard() {
                         <p className="text-xs font-medium text-mis-texto truncate">{of.nome}</p>
                         <span className="text-xs text-mis-texto2 shrink-0 ml-1">{of.alunos} alunos</span>
                       </div>
+
                       <div className="w-full h-1.5 bg-mis-borda rounded-full">
                         <div
-                          className={`h-full rounded-full ${of.pct === null ? 'bg-mis-borda' : of.pct >= 75 ? 'bg-verde' : of.pct >= 50 ? 'bg-amarelo' : 'bg-red-500'}`}
-                          style={{ width: of.pct !== null ? `${of.pct}%` : '0%' }}/>
+                          className={`h-full rounded-full ${
+                            of.pct === null
+                              ? 'bg-mis-borda'
+                              : of.pct >= 75
+                                ? 'bg-verde'
+                                : of.pct >= 50
+                                  ? 'bg-amarelo'
+                                  : 'bg-red-500'
+                          }`}
+                          style={{ width: of.pct !== null ? `${of.pct}%` : '0%' }}
+                        />
                       </div>
                     </div>
-                    <span className={`text-xs font-bold w-8 text-right shrink-0 ${of.pct === null ? 'text-mis-texto2' : of.pct >= 75 ? 'text-verde' : of.pct >= 50 ? 'text-amarelo' : 'text-red-400'}`}>
+
+                    <span className={`text-xs font-bold w-8 text-right shrink-0 ${
+                      of.pct === null
+                        ? 'text-mis-texto2'
+                        : of.pct >= 75
+                          ? 'text-verde'
+                          : of.pct >= 50
+                            ? 'text-amarelo'
+                            : 'text-red-400'
+                    }`}>
                       {of.pct !== null ? `${of.pct}%` : '—'}
                     </span>
                   </div>
@@ -711,11 +945,9 @@ export default function DiretorDashboard() {
               </div>
             )}
           </div>
-
         </div>
       )}
 
-      {/* ── Perfil Sociodemográfico ── */}
       {!loadingKpis && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -724,84 +956,96 @@ export default function DiretorDashboard() {
             <span className="badge badge-amarelo">{perfisAlunos.integrantes.total} ativos</span>
           </div>
 
-          {/* Linha 1: Sexo + Raça + Tipo */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            {/* Sexo */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Sexo</h4>
+
               {perfisAlunos.sexo.map((s, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-mis-texto">{s.nome}</span>
                     <span className="font-bold text-mis-texto2">{s.qtd} ({s.pct}%)</span>
                   </div>
+
                   <div className="w-full h-2 bg-mis-borda rounded-full">
                     <div className="h-full rounded-full bg-azul" style={{ width: `${s.pct}%` }}/>
                   </div>
                 </div>
               ))}
-              {perfisAlunos.sexo.length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+              {perfisAlunos.sexo.length === 0 && (
+                <p className="text-xs text-mis-texto2">Sem dados</p>
+              )}
             </div>
 
-            {/* Raça */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Raça / Cor</h4>
+
               {perfisAlunos.raca.map((r, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-mis-texto truncate">{r.nome}</span>
                     <span className="font-bold text-mis-texto2 shrink-0 ml-1">{r.qtd} ({r.pct}%)</span>
                   </div>
+
                   <div className="w-full h-2 bg-mis-borda rounded-full">
                     <div className="h-full rounded-full bg-marrom" style={{ width: `${r.pct}%` }}/>
                   </div>
                 </div>
               ))}
-              {perfisAlunos.raca.length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+              {perfisAlunos.raca.length === 0 && (
+                <p className="text-xs text-mis-texto2">Sem dados</p>
+              )}
             </div>
 
-            {/* Tipo (aluno/responsável/etc) */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Tipo de Matrícula</h4>
+
               {perfisAlunos.tipo.map((t, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-mis-texto truncate">{t.nome}</span>
                     <span className="font-bold text-mis-texto2 shrink-0 ml-1">{t.qtd} ({t.pct}%)</span>
                   </div>
+
                   <div className="w-full h-2 bg-mis-borda rounded-full">
                     <div className="h-full rounded-full bg-verde" style={{ width: `${t.pct}%` }}/>
                   </div>
                 </div>
               ))}
-              {perfisAlunos.tipo.length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+              {perfisAlunos.tipo.length === 0 && (
+                <p className="text-xs text-mis-texto2">Sem dados</p>
+              )}
             </div>
           </div>
 
-          {/* Linha 2: Rede de Ensino + Escola Origem + Programa Social */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            {/* Rede de ensino */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Rede de Ensino</h4>
+
               {(perfisAlunos.redeEnsino || []).map((r, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-mis-texto truncate">{r.nome}</span>
                     <span className="font-bold text-mis-texto2 shrink-0 ml-1">{r.qtd} ({r.pct}%)</span>
                   </div>
+
                   <div className="w-full h-2 bg-mis-borda rounded-full">
                     <div className="h-full rounded-full bg-amarelo" style={{ width: `${r.pct}%` }}/>
                   </div>
                 </div>
               ))}
-              {(perfisAlunos.redeEnsino || []).length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+              {(perfisAlunos.redeEnsino || []).length === 0 && (
+                <p className="text-xs text-mis-texto2">Sem dados</p>
+              )}
             </div>
 
-            {/* Escola de origem */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Escola de Origem</h4>
+
               <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                 {(perfisAlunos.escolaOrigem || []).slice(0, 8).map((e, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
@@ -810,12 +1054,15 @@ export default function DiretorDashboard() {
                   </div>
                 ))}
               </div>
-              {(perfisAlunos.escolaOrigem || []).length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+              {(perfisAlunos.escolaOrigem || []).length === 0 && (
+                <p className="text-xs text-mis-texto2">Sem dados</p>
+              )}
             </div>
 
-            {/* Programa social + Família */}
             <div className="mis-card space-y-3">
               <h4 className="text-xs font-bold text-mis-texto uppercase tracking-wide">Programas Sociais</h4>
+
               <div className="space-y-2">
                 {(perfisAlunos.programaSocial || []).map((p, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
@@ -823,21 +1070,52 @@ export default function DiretorDashboard() {
                     <span className="text-xs font-bold text-mis-texto2 shrink-0 bg-mis-bg3 px-1.5 py-0.5 rounded-md">{p.qtd}</span>
                   </div>
                 ))}
-                {(perfisAlunos.programaSocial || []).length === 0 && <p className="text-xs text-mis-texto2">Sem dados</p>}
+
+                {(perfisAlunos.programaSocial || []).length === 0 && (
+                  <p className="text-xs text-mis-texto2">Sem dados</p>
+                )}
               </div>
+
               <div className="border-t border-mis-borda pt-2 mt-1 flex justify-between items-center">
                 <span className="text-xs text-mis-texto2">Média integrantes família</span>
                 <span className="text-sm font-black text-amarelo">{perfisAlunos.integrantes.media}</span>
               </div>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <CardDistribuicao
+              titulo="Crença / Religião"
+              dados={perfisAlunos.religiao}
+              cor="bg-azul"
+              rolavel
+            />
+
+            <CardDistribuicao
+              titulo="Inclusão e Acessibilidade"
+              dados={perfisAlunos.pcd}
+              cor="bg-verde"
+            />
+
+            <CardDistribuicao
+              titulo="Bairro, Distrito ou Comunidade"
+              dados={perfisAlunos.localidades}
+              cor="bg-amarelo"
+              rolavel
+            />
+          </div>
         </div>
       )}
 
-      {/* ── Gestão de Professores ── */}
       <SecaoProfessores />
 
-      {modalAberto && turmas.length > 0 && <ModalExportacao turmas={turmas} onClose={() => setModalAberto(false)}/>}
+      {modalAberto && turmas.length > 0 && (
+        <ModalExportacao
+          turmas={turmas}
+          onClose={() => setModalAberto(false)}
+        />
+      )}
+
       {modalAberto && turmas.length === 0 && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-mis-bg2 rounded-2xl p-6 max-w-sm w-full border border-mis-borda text-center">
@@ -848,7 +1126,12 @@ export default function DiretorDashboard() {
           </div>
         </div>
       )}
-      {modalFrequenciaAberto && <ModalFrequencia onClose={() => setModalFrequenciaAberto(false)}/>}
+
+      {modalFrequenciaAberto && (
+        <ModalFrequencia
+          onClose={() => setModalFrequenciaAberto(false)}
+        />
+      )}
     </div>
   )
 }
