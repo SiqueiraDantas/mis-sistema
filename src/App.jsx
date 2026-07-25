@@ -11,7 +11,7 @@ import RecoverPassword from './pages/Auth/RecoverPassword'
 import Matricula from './pages/Matricula/Matricula'
 
 // Interno
-import Layout from './components/Layout'
+import Layout from './components/Layout/Layout'
 import ProfessorDashboard from './pages/Dashboard/ProfessorDashboard'
 import DiretorDashboard from './pages/Dashboard/DiretorDashboard'
 import PlanosAula from './pages/PlanosAula/PlanosAula'
