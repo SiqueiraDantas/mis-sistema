@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePeriodo } from '../../contexts/PeriodoContext'
 import { supabase } from '../../services/supabase'
 import SecaoProfessores from './SecaoProfessores'
 import {
@@ -13,7 +14,7 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 // ─── MODAL PLANO DE CURSO ─────────────────────────────────────────────────────
-function ModalExportacao({ turmas, onClose }) {
+function ModalExportacao({ turmas, periodoLetivo, onClose }) {
   const [step, setStep] = useState(1)
   const [turmaSelecionada, setTurmaSelecionada] = useState(turmas[0]?.id || '')
   const [dataInicio, setDataInicio] = useState('')
@@ -32,6 +33,7 @@ function ModalExportacao({ turmas, onClose }) {
     try {
       const [{ data: planos }, { data: professor }] = await Promise.all([
         supabase.from('planos_aula').select('*').eq('turma_id', turmaSelecionada)
+          .eq('periodo_letivo', periodoLetivo)
           .gte('data_aula', dataInicio).lte('data_aula', dataFim).order('data_aula'),
         supabase.from('profiles').select('*').eq('id', turma?.professor_id).single()
       ])
@@ -50,7 +52,7 @@ function ModalExportacao({ turmas, onClose }) {
       const resp = await fetch('https://rvmucdufiaalckacmlmi.supabase.co/functions/v1/gerar-plano-curso', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': ANON_KEY },
-        body: JSON.stringify({ turma_id: turmaSelecionada, professor_id: turma?.professor_id, data_inicio: dataInicio, data_fim: dataFim })
+        body: JSON.stringify({ turma_id: turmaSelecionada, professor_id: turma?.professor_id, data_inicio: dataInicio, data_fim: dataFim, periodo_letivo: periodoLetivo })
       })
       const result = await resp.json()
       if (result.erro) throw new Error(result.erro)
@@ -196,7 +198,7 @@ function ModalExportacao({ turmas, onClose }) {
 }
 
 // ─── MODAL FREQUENCIA ────────────────────────────────────────────────────────
-function ModalFrequencia({ onClose }) {
+function ModalFrequencia({ periodoLetivo, onClose }) {
   const [oficinas, setOficinas] = useState([])
   const [oficinaSelecionada, setOficinaSelecionada] = useState('')
   const [dataInicio, setDataInicio] = useState('')
@@ -223,9 +225,11 @@ function ModalFrequencia({ onClose }) {
     try {
       const [{ data: freqs }, { data: matriculas }] = await Promise.all([
         supabase.from('frequencias').select('*').eq('turma_id', oficinaSelecionada)
+          .eq('periodo_letivo', periodoLetivo)
           .gte('data_aula', dataInicio).lte('data_aula', dataFim),
         supabase.from('matriculas_oficinas').select('aluno_id, alunos(nome)')
           .eq('oficina_id', oficinaSelecionada)
+          .eq('periodo_letivo', periodoLetivo)
       ])
 
       const diasComAula = [...new Set((freqs || []).map(f => f.data_aula))].sort()
@@ -247,7 +251,7 @@ function ModalFrequencia({ onClose }) {
       const resp = await fetch('https://rvmucdufiaalckacmlmi.supabase.co/functions/v1/gerar-frequencia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
-        body: JSON.stringify({ oficina_id: oficinaSelecionada, data_inicio: dataInicio, data_fim: dataFim })
+        body: JSON.stringify({ oficina_id: oficinaSelecionada, data_inicio: dataInicio, data_fim: dataFim, periodo_letivo: periodoLetivo })
       })
 
       if (!resp.ok) {
@@ -449,6 +453,7 @@ function CardDistribuicao({ titulo, dados = [], cor = 'bg-azul', rolavel = false
 // ─── DASHBOARD DIRETOR ────────────────────────────────────────────────────────
 export default function DiretorDashboard() {
   const { perfil } = useAuth()
+  const { periodoLetivo, somenteLeitura } = usePeriodo()
   const [stats, setStats] = useState({ alunos: 0, turmas: 0, oficinas: 0 })
   const [turmas, setTurmas] = useState([])
   const [modalAberto, setModalAberto] = useState(false)
@@ -473,159 +478,275 @@ export default function DiretorDashboard() {
   })
 
   useEffect(() => {
+    let ativo = true
+
     async function loadData() {
-      const hoje = new Date()
-      const mesInicio = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-01`
-      const mesFim = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate()}`
+      setLoadingKpis(true)
 
-      const [
-        { count: alunos },
-        { count: turmasCount },
-        { count: oficinas },
-        { data: turmasData },
-        { data: freqs },
-        { data: matriculas },
-        { data: oficinasData },
-      ] = await Promise.all([
-        supabase.from('alunos').select('*', { count: 'exact', head: true }).eq('status', 'ativo'),
-        supabase.from('turmas').select('*', { count: 'exact', head: true }).eq('ano_letivo', ANO_ATUAL).eq('ativa', true),
-        supabase.from('oficinas').select('*', { count: 'exact', head: true }),
-        supabase.from('turmas').select('id, nome, professor_id, oficinas(nome), horario_inicio, horario_fim, vagas').eq('ano_letivo', ANO_ATUAL).order('nome'),
-        supabase.from('frequencias').select('aluno_id, status, turma_id').gte('data_aula', mesInicio).lte('data_aula', mesFim),
-        supabase.from('matriculas_oficinas').select('aluno_id, oficina_id'),
-        supabase.from('oficinas').select('id, nome').eq('ativo', true).order('nome'),
-      ])
+      // Limpa imediatamente o período anterior para não deixar KPIs antigos
+      // visíveis enquanto a nova consulta está sendo carregada.
+      setStats({ alunos: 0, turmas: 0, oficinas: 0 })
+      setTurmas([])
+      setFreqGeral({ pct: 0, presencas: 0, faltas: 0, total: 0 })
+      setAlertaFaltas([])
+      setResumoOficinas([])
+      setPerfisAlunos({
+        sexo: [],
+        raca: [],
+        redeEnsino: [],
+        programaSocial: [],
+        integrantes: { media: 0, total: 0 },
+        tipo: [],
+        escolaOrigem: [],
+        religiao: [],
+        pcd: [],
+        localidades: [],
+      })
 
-      setStats({ alunos: alunos || 0, turmas: turmasCount || 0, oficinas: oficinas || 0 })
-      setTurmas(turmasData || [])
+      try {
+        const hoje = new Date()
+        const mesInicio = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
+        const mesFim = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()}`
 
-      const totalFreqs = (freqs || []).length
-      const presencas = (freqs || []).filter(f => f.status === 'presente').length
-      const faltas = (freqs || []).filter(f => f.status === 'ausente').length
-      const pct = totalFreqs > 0 ? Math.round((presencas / totalFreqs) * 100) : 0
-      setFreqGeral({ pct, presencas, faltas, total: totalFreqs })
+        const [
+          { count: alunos },
+          { count: turmasCount },
+          { data: turmasData },
+          { data: freqs },
+          { data: matriculas },
+          { data: oficinasData },
+        ] = await Promise.all([
+          supabase
+            .from('alunos')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'ativo')
+            .eq('periodo_letivo', periodoLetivo),
 
-      const porAluno = {}
-      for (const f of (freqs || [])) {
-        if (!porAluno[f.aluno_id]) porAluno[f.aluno_id] = { presencas: 0, faltas: 0 }
-        if (f.status === 'presente') porAluno[f.aluno_id].presencas++
-        if (f.status === 'ausente') porAluno[f.aluno_id].faltas++
-      }
+          supabase
+            .from('turmas')
+            .select('*', { count: 'exact', head: true })
+            .eq('periodo_letivo', periodoLetivo)
+            .eq('ativa', true),
 
-      const idsComFaltas = Object.entries(porAluno)
-        .filter(([_, v]) => v.faltas > 0)
-        .sort((a, b) => b[1].faltas - a[1].faltas)
-        .slice(0, 5)
-        .map(([id]) => id)
+          supabase
+            .from('turmas')
+            .select('id, nome, professor_id, periodo_letivo, oficinas(nome), horario_inicio, horario_fim, vagas')
+            .eq('periodo_letivo', periodoLetivo)
+            .order('nome'),
 
-      if (idsComFaltas.length > 0) {
-        const { data: alunosData } = await supabase
-          .from('alunos')
-          .select('id, nome')
-          .in('id', idsComFaltas)
+          supabase
+            .from('frequencias')
+            .select('aluno_id, status, turma_id, data_aula')
+            .eq('periodo_letivo', periodoLetivo)
+            .gte('data_aula', mesInicio)
+            .lte('data_aula', mesFim),
 
-        const alerta = idsComFaltas.map(id => {
-          const al = (alunosData || []).find(a => a.id === id)
-          const total = porAluno[id].presencas + porAluno[id].faltas
-          const pctAluno = total > 0 ? Math.round((porAluno[id].presencas / total) * 100) : 0
-          return {
-            id,
-            nome: al?.nome || '—',
-            faltas: porAluno[id].faltas,
-            presencas: porAluno[id].presencas,
-            pct: pctAluno
-          }
+          supabase
+            .from('matriculas_oficinas')
+            .select('aluno_id, oficina_id')
+            .eq('periodo_letivo', periodoLetivo),
+
+          supabase
+            .from('oficinas')
+            .select('id, nome')
+            .eq('ativo', true)
+            .order('nome'),
+        ])
+
+        if (!ativo) return
+
+        // Conta somente oficinas que possuem alunos no período selecionado.
+        const oficinasComMatricula = new Set(
+          (matriculas || []).map(item => item.oficina_id).filter(Boolean)
+        ).size
+
+        setStats({
+          alunos: alunos || 0,
+          turmas: turmasCount || 0,
+          oficinas: oficinasComMatricula,
         })
+        setTurmas(turmasData || [])
 
-        setAlertaFaltas(alerta)
-      }
+        const totalFreqs = (freqs || []).length
+        const presencas = (freqs || []).filter(f => f.status === 'presente').length
+        const faltas = (freqs || []).filter(f => f.status === 'ausente').length
+        const pct = totalFreqs > 0
+          ? Math.round((presencas / totalFreqs) * 100)
+          : 0
 
-      const resumo = (oficinasData || []).map(of => {
-        const alunosOf = new Set(
-          (matriculas || [])
-            .filter(m => m.oficina_id === of.id)
-            .map(m => m.aluno_id)
-        )
+        setFreqGeral({ pct, presencas, faltas, total: totalFreqs })
 
-        const freqsOf = (freqs || []).filter(f => alunosOf.has(f.aluno_id))
-        const pOf = freqsOf.filter(f => f.status === 'presente').length
-        const pctOf = freqsOf.length > 0 ? Math.round((pOf / freqsOf.length) * 100) : null
+        const porAluno = {}
 
-        return {
-          nome: of.nome,
-          alunos: alunosOf.size,
-          pct: pctOf,
-          aulas: freqsOf.length > 0 ? [...new Set(freqsOf.map(f => f.data_aula))].length : 0
+        for (const frequencia of (freqs || [])) {
+          if (!porAluno[frequencia.aluno_id]) {
+            porAluno[frequencia.aluno_id] = { presencas: 0, faltas: 0 }
+          }
+
+          if (frequencia.status === 'presente') {
+            porAluno[frequencia.aluno_id].presencas += 1
+          }
+
+          if (frequencia.status === 'ausente') {
+            porAluno[frequencia.aluno_id].faltas += 1
+          }
         }
-      }).filter(o => o.alunos > 0)
 
-      setResumoOficinas(resumo)
+        const idsComFaltas = Object.entries(porAluno)
+          .filter(([_, valores]) => valores.faltas > 0)
+          .sort((a, b) => b[1].faltas - a[1].faltas)
+          .slice(0, 5)
+          .map(([id]) => id)
 
-      const [
-        { data: ap },
-        { data: localidadesManuais, error: erroLocalidades },
-      ] = await Promise.all([
-        supabase
-          .from('alunos')
-          .select('sexo, raca, religiao, pcd, rede_ensino, programa_social, integrantes_familia, tipo, escola_origem')
-          .eq('status', 'ativo'),
+        if (idsComFaltas.length > 0) {
+          const { data: alunosData } = await supabase
+            .from('alunos')
+            .select('id, nome')
+            .eq('periodo_letivo', periodoLetivo)
+            .in('id', idsComFaltas)
 
-        supabase
-          .from('kpi_localidades_manuais')
-          .select('localidade, quantidade_alunos')
-          .eq('ano_letivo', ANO_ATUAL),
-      ])
+          if (!ativo) return
 
-      if (erroLocalidades) {
-        console.error('Erro ao carregar localidades:', erroLocalidades)
-      }
+          const alerta = idsComFaltas.map(id => {
+            const aluno = (alunosData || []).find(item => item.id === id)
+            const total = porAluno[id].presencas + porAluno[id].faltas
+            const pctAluno = total > 0
+              ? Math.round((porAluno[id].presencas / total) * 100)
+              : 0
 
-      if (ap && ap.length > 0) {
-        const contagem = (campo) => {
-          const map = {}
-
-          ap.forEach(a => {
-            const val = a[campo] || 'Não informado'
-            map[val] = (map[val] || 0) + 1
+            return {
+              id,
+              nome: aluno?.nome || '—',
+              faltas: porAluno[id].faltas,
+              presencas: porAluno[id].presencas,
+              pct: pctAluno,
+            }
           })
 
-          return Object.entries(map)
+          setAlertaFaltas(alerta)
+        }
+
+        const resumo = (oficinasData || [])
+          .map(oficina => {
+            const alunosOficina = new Set(
+              (matriculas || [])
+                .filter(matricula => matricula.oficina_id === oficina.id)
+                .map(matricula => matricula.aluno_id)
+            )
+
+            const frequenciasOficina = (freqs || [])
+              .filter(frequencia => alunosOficina.has(frequencia.aluno_id))
+
+            const presencasOficina = frequenciasOficina
+              .filter(frequencia => frequencia.status === 'presente')
+              .length
+
+            const pctOficina = frequenciasOficina.length > 0
+              ? Math.round((presencasOficina / frequenciasOficina.length) * 100)
+              : null
+
+            return {
+              nome: oficina.nome,
+              alunos: alunosOficina.size,
+              pct: pctOficina,
+              aulas: frequenciasOficina.length > 0
+                ? [...new Set(
+                    frequenciasOficina
+                      .map(frequencia => frequencia.data_aula)
+                      .filter(Boolean)
+                  )].length
+                : 0,
+            }
+          })
+          .filter(oficina => oficina.alunos > 0)
+
+        setResumoOficinas(resumo)
+
+        const [
+          { data: alunosPerfil },
+          { data: localidadesManuais, error: erroLocalidades },
+        ] = await Promise.all([
+          supabase
+            .from('alunos')
+            .select(`
+              sexo,
+              raca,
+              religiao,
+              pcd,
+              rede_ensino,
+              programa_social,
+              integrantes_familia,
+              tipo,
+              escola_origem,
+              bairro
+            `)
+            .eq('status', 'ativo')
+            .eq('periodo_letivo', periodoLetivo),
+
+          supabase
+            .from('kpi_localidades_manuais')
+            .select('localidade, quantidade_alunos')
+            .eq('periodo_letivo', periodoLetivo),
+        ])
+
+        if (!ativo) return
+
+        if (erroLocalidades) {
+          console.error('Erro ao carregar localidades:', erroLocalidades)
+        }
+
+        const ap = alunosPerfil || []
+
+        if (ap.length === 0) return
+
+        const contagem = campo => {
+          const mapa = {}
+
+          ap.forEach(aluno => {
+            const valor = aluno[campo] || 'Não informado'
+            mapa[valor] = (mapa[valor] || 0) + 1
+          })
+
+          return Object.entries(mapa)
             .map(([nome, qtd]) => ({
               nome,
               qtd,
-              pct: Math.round((qtd / ap.length) * 100)
+              pct: Math.round((qtd / ap.length) * 100),
             }))
             .sort((a, b) => b.qtd - a.qtd)
         }
 
-        const progMap = {}
+        const programasMap = {}
 
-        ap.forEach(a => {
-          const progs = a.programa_social || []
+        ap.forEach(aluno => {
+          const programas = Array.isArray(aluno.programa_social)
+            ? aluno.programa_social
+            : []
 
-          if (progs.length === 0) {
-            progMap.Nenhum = (progMap.Nenhum || 0) + 1
+          if (programas.length === 0) {
+            programasMap.Nenhum = (programasMap.Nenhum || 0) + 1
           } else {
-            progs.forEach(p => {
-              progMap[p] = (progMap[p] || 0) + 1
+            programas.forEach(programa => {
+              programasMap[programa] = (programasMap[programa] || 0) + 1
             })
           }
         })
 
-        const programaSocial = Object.entries(progMap)
+        const programaSocial = Object.entries(programasMap)
           .map(([nome, qtd]) => ({
             nome,
             qtd,
-            pct: Math.round((qtd / ap.length) * 100)
+            pct: Math.round((qtd / ap.length) * 100),
           }))
           .sort((a, b) => b.qtd - a.qtd)
 
         const religiaoMap = {}
 
-        ap.forEach(a => {
-          const religiao = typeof a.religiao === 'string' && a.religiao.trim()
-            ? a.religiao.trim()
-            : 'Não informado'
+        ap.forEach(aluno => {
+          const religiao =
+            typeof aluno.religiao === 'string' && aluno.religiao.trim()
+              ? aluno.religiao.trim()
+              : 'Não informado'
 
           religiaoMap[religiao] = (religiaoMap[religiao] || 0) + 1
         })
@@ -634,18 +755,18 @@ export default function DiretorDashboard() {
           .map(([nome, qtd]) => ({
             nome,
             qtd,
-            pct: Math.round((qtd / ap.length) * 100)
+            pct: Math.round((qtd / ap.length) * 100),
           }))
           .sort((a, b) => b.qtd - a.qtd)
 
         const pcdMap = {}
 
-        ap.forEach(a => {
+        ap.forEach(aluno => {
           let situacao = 'Não informado'
 
-          if (a.pcd === true) {
+          if (aluno.pcd === true) {
             situacao = 'Pessoa com deficiência'
-          } else if (a.pcd === false) {
+          } else if (aluno.pcd === false) {
             situacao = 'Não PCD'
           }
 
@@ -656,18 +777,36 @@ export default function DiretorDashboard() {
           .map(([nome, qtd]) => ({
             nome,
             qtd,
-            pct: Math.round((qtd / ap.length) * 100)
+            pct: Math.round((qtd / ap.length) * 100),
           }))
           .sort((a, b) => b.qtd - a.qtd)
 
         const localidadesMap = {}
 
-        ;(localidadesManuais || []).forEach(item => {
-          const nome = item.localidade?.trim() || 'Não informado'
-          const qtd = Number(item.quantidade_alunos) || 0
+        /*
+         * Quando houver localidades cadastradas manualmente para o período,
+         * elas continuam sendo utilizadas. Isso preserva o histórico antigo.
+         *
+         * Quando não houver registros manuais, como em 2026.2, o painel
+         * calcula automaticamente os bairros informados nas matrículas.
+         */
+        if ((localidadesManuais || []).length > 0) {
+          ;(localidadesManuais || []).forEach(item => {
+            const nome = item.localidade?.trim() || 'Não informado'
+            const qtd = Number(item.quantidade_alunos) || 0
 
-          localidadesMap[nome] = (localidadesMap[nome] || 0) + qtd
-        })
+            localidadesMap[nome] = (localidadesMap[nome] || 0) + qtd
+          })
+        } else {
+          ap.forEach(aluno => {
+            const nome =
+              typeof aluno.bairro === 'string' && aluno.bairro.trim()
+                ? aluno.bairro.trim()
+                : 'Não informado'
+
+            localidadesMap[nome] = (localidadesMap[nome] || 0) + 1
+          })
+        }
 
         const totalLocalidades = Object.values(localidadesMap)
           .reduce((total, qtd) => total + qtd, 0)
@@ -686,12 +825,15 @@ export default function DiretorDashboard() {
             return b.qtd - a.qtd
           })
 
-        const mediaFamilia = ap.filter(a => a.integrantes_familia > 0)
+        const alunosComFamilia = ap
+          .filter(aluno => Number(aluno.integrantes_familia) > 0)
 
-        const media = mediaFamilia.length > 0
+        const media = alunosComFamilia.length > 0
           ? (
-              mediaFamilia.reduce((s, a) => s + a.integrantes_familia, 0) /
-              mediaFamilia.length
+              alunosComFamilia.reduce(
+                (soma, aluno) => soma + Number(aluno.integrantes_familia),
+                0
+              ) / alunosComFamilia.length
             ).toFixed(1)
           : '—'
 
@@ -707,13 +849,19 @@ export default function DiretorDashboard() {
           localidades,
           integrantes: { media, total: ap.length },
         })
+      } catch (erro) {
+        console.error('Erro ao carregar painel do diretor:', erro)
+      } finally {
+        if (ativo) setLoadingKpis(false)
       }
-
-      setLoadingKpis(false)
     }
 
     loadData()
-  }, [])
+
+    return () => {
+      ativo = false
+    }
+  }, [periodoLetivo])
 
   const mesAtual = new Date().toLocaleDateString('pt-BR', {
     month: 'long',
@@ -725,17 +873,28 @@ export default function DiretorDashboard() {
       <div className="flex items-center gap-3">
         <div>
           <h1 className="page-title">Painel do Diretor</h1>
-          <p className="text-mis-texto2 text-sm mt-1">Visão geral da Escola de Música</p>
+          <p className="text-mis-texto2 text-sm mt-1">Visão geral da Escola de Música · Período {periodoLetivo}</p>
         </div>
         <span className="badge badge-amarelo ml-auto">Diretor</span>
       </div>
+
+      {somenteLeitura && (
+        <div className="bg-amarelo/10 border border-amarelo/30 rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-amarelo">
+            Período histórico: {periodoLetivo}
+          </p>
+          <p className="text-xs text-mis-texto2 mt-1">
+            Os indicadores abaixo mostram somente os registros históricos deste período.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { icon: Users, label: 'Total de Alunos', valor: stats.alunos, cor: 'text-verde' },
           { icon: GraduationCap, label: 'Turmas Ativas', valor: stats.turmas, cor: 'text-azul' },
           { icon: BarChart2, label: 'Oficinas', valor: stats.oficinas, cor: 'text-amarelo' },
-          { icon: TrendingUp, label: 'Ano Letivo', valor: ANO_ATUAL, cor: 'text-marrom' },
+          { icon: TrendingUp, label: 'Período Letivo', valor: periodoLetivo, cor: 'text-marrom' },
         ].map((c, i) => (
           <div key={i} className="mis-card flex flex-col gap-2">
             <c.icon size={20} className={c.cor}/>
@@ -1112,6 +1271,7 @@ export default function DiretorDashboard() {
       {modalAberto && turmas.length > 0 && (
         <ModalExportacao
           turmas={turmas}
+          periodoLetivo={periodoLetivo}
           onClose={() => setModalAberto(false)}
         />
       )}
@@ -1129,6 +1289,7 @@ export default function DiretorDashboard() {
 
       {modalFrequenciaAberto && (
         <ModalFrequencia
+          periodoLetivo={periodoLetivo}
           onClose={() => setModalFrequenciaAberto(false)}
         />
       )}

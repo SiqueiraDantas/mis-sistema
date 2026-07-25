@@ -67,6 +67,57 @@ const BAIRROS = [
 
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
+const PERIODO_LETIVO = '2026.2'
+const VERSAO_TERMO_IMAGEM = '2026.2-v1'
+
+function somenteDigitos(valor = '') {
+  return String(valor).replace(/\D/g, '')
+}
+
+function normalizarCpf(valor = '') {
+  return somenteDigitos(valor)
+}
+
+function normalizarTelefone(valor = '') {
+  let telefone = somenteDigitos(valor)
+
+  // Remove o código do Brasil quando informado: +55 / 55
+  if (telefone.startsWith('55') && (telefone.length === 12 || telefone.length === 13)) {
+    telefone = telefone.slice(2)
+  }
+
+  return telefone
+}
+
+function cpfValido(valor = '') {
+  const cpf = normalizarCpf(valor)
+
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false
+
+  const calcularDigito = tamanho => {
+    let soma = 0
+
+    for (let i = 0; i < tamanho; i += 1) {
+      soma += Number(cpf[i]) * (tamanho + 1 - i)
+    }
+
+    const resto = (soma * 10) % 11
+    return resto === 10 ? 0 : resto
+  }
+
+  return calcularDigito(9) === Number(cpf[9])
+    && calcularDigito(10) === Number(cpf[10])
+}
+
+function telefoneValido(valor = '') {
+  const telefone = normalizarTelefone(valor)
+  return telefone.length === 10 || telefone.length === 11
+}
+
+function emailValido(valor = '') {
+  if (!valor.trim()) return true
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim())
+}
 
 function StepIndicator({ step, total }) {
   return (
@@ -158,6 +209,7 @@ export default function Matricula() {
     resp_email: '',
     integrantes_familia: '',
     programas_sociais: [],
+    responsavel_no_grupo_whatsapp: '',
   })
 
   function set(field, value) {
@@ -200,10 +252,25 @@ export default function Matricula() {
     const e = {}
 
     if (!form.nome.trim()) e.nome = 'Nome obrigatório'
-    if (!form.idade) e.idade = 'Idade obrigatória'
-    else if (Number(form.idade) < 8 || Number(form.idade) > 18) e.idade = 'Idade deve ser entre 8 e 18 anos'
-    if (!form.cpf.trim()) e.cpf = 'CPF obrigatório'
-    if (!form.telefone.trim()) e.telefone = 'Telefone obrigatório'
+
+    if (!form.idade) {
+      e.idade = 'Idade obrigatória'
+    } else if (Number(form.idade) < 8 || Number(form.idade) > 18) {
+      e.idade = 'Idade deve ser entre 8 e 18 anos'
+    }
+
+    if (!form.cpf.trim()) {
+      e.cpf = 'CPF obrigatório'
+    } else if (!cpfValido(form.cpf)) {
+      e.cpf = 'CPF inválido'
+    }
+
+    if (!form.telefone.trim()) {
+      e.telefone = 'Telefone obrigatório'
+    } else if (!telefoneValido(form.telefone)) {
+      e.telefone = 'Informe um telefone com DDD'
+    }
+
     if (form.oficinas.length === 0) e.oficinas = 'Selecione ao menos uma oficina'
     if (!form.sexo) e.sexo = 'Sexo obrigatório'
     if (!form.raca) e.raca = 'Raça obrigatória'
@@ -221,7 +288,24 @@ export default function Matricula() {
     const e = {}
 
     if (!form.resp_nome.trim()) e.resp_nome = 'Nome do responsável obrigatório'
-    if (!form.resp_telefone.trim()) e.resp_telefone = 'Telefone do responsável obrigatório'
+
+    if (!form.resp_telefone.trim()) {
+      e.resp_telefone = 'Telefone do responsável obrigatório'
+    } else if (!telefoneValido(form.resp_telefone)) {
+      e.resp_telefone = 'Informe um telefone com DDD'
+    }
+
+    if (!emailValido(form.resp_email)) {
+      e.resp_email = 'E-mail inválido'
+    }
+
+    if (form.integrantes_familia) {
+      const integrantes = Number(form.integrantes_familia)
+
+      if (!Number.isInteger(integrantes) || integrantes < 1 || integrantes > 20) {
+        e.integrantes_familia = 'Informe um número entre 1 e 20'
+      }
+    }
 
     setErros(e)
     return Object.keys(e).length === 0
@@ -240,6 +324,15 @@ export default function Matricula() {
   }
 
   async function enviar() {
+    if (!form.responsavel_no_grupo_whatsapp) {
+      setErros(e => ({
+        ...e,
+        responsavel_no_grupo_whatsapp: 'Informe se o responsável já participa do grupo.',
+      }))
+      setErroGeral('Responda à pergunta sobre o grupo de responsáveis.')
+      return
+    }
+
     if (!aceitouTermos) {
       setErroGeral('Você precisa aceitar os termos para continuar.')
       return
@@ -255,6 +348,46 @@ export default function Matricula() {
         throw new Error('Nenhuma oficina foi selecionada.')
       }
 
+      const cpfNormalizado = normalizarCpf(form.cpf)
+      const telefoneAlunoNormalizado = normalizarTelefone(form.telefone)
+      const telefoneResponsavelNormalizado = normalizarTelefone(form.resp_telefone)
+      const emailResponsavelNormalizado = form.resp_email?.trim().toLowerCase() || null
+      const programasSociaisNormalizados =
+        form.programas_sociais.length > 0 ? form.programas_sociais : ['Nenhum']
+
+      if (!cpfValido(cpfNormalizado)) {
+        throw new Error('O CPF informado é inválido.')
+      }
+
+      if (!telefoneValido(telefoneAlunoNormalizado)) {
+        throw new Error('O telefone do aluno é inválido.')
+      }
+
+      if (!telefoneValido(telefoneResponsavelNormalizado)) {
+        throw new Error('O telefone do responsável é inválido.')
+      }
+
+      if (!emailValido(emailResponsavelNormalizado || '')) {
+        throw new Error('O e-mail do responsável é inválido.')
+      }
+
+      // Impede uma segunda inscrição do mesmo CPF somente no período 2026.2.
+      // O mesmo CPF existente em 2026.1 continua autorizado.
+      const { data: cadastrosExistentes, error: errVerificacaoCpf } = await supabase
+        .from('alunos')
+        .select('id')
+        .eq('cpf', cpfNormalizado)
+        .eq('periodo_letivo', PERIODO_LETIVO)
+        .limit(1)
+
+      if (errVerificacaoCpf) throw errVerificacaoCpf
+
+      if (cadastrosExistentes && cadastrosExistentes.length > 0) {
+        throw new Error(
+          `Já existe uma matrícula ou rematrícula para este CPF no período ${PERIODO_LETIVO}.`
+        )
+      }
+
       const numMatricula = `${ANO_ATUAL}-${form.tipo_matricula === 'rematricula' ? 'B' : 'A'}-MAD-${Date.now().toString().slice(-6)}`
 
       const { error: errAluno } = await supabase
@@ -263,8 +396,8 @@ export default function Matricula() {
           numero_matricula: numMatricula,
           tipo: form.tipo_matricula,
           nome: form.nome.trim(),
-          cpf: form.cpf.trim(),
-          telefone: form.telefone.trim(),
+          cpf: cpfNormalizado,
+          telefone: telefoneAlunoNormalizado,
           idade: form.idade ? Number(form.idade) : null,
           data_nascimento: null,
           sexo:
@@ -278,13 +411,17 @@ export default function Matricula() {
           bairro: form.bairro,
           rede_ensino: form.rede_ensino,
           escola_origem: form.escola,
-          programa_social: form.programas_sociais,
+          programa_social: programasSociaisNormalizados,
           integrantes_familia: form.integrantes_familia
             ? Number(form.integrantes_familia)
             : null,
           pcd: form.pcd === 'sim',
           status: 'ativo',
           ano_letivo: ANO_ATUAL,
+          periodo_letivo: PERIODO_LETIVO,
+          aceite_uso_imagem: true,
+          aceite_uso_imagem_em: new Date().toISOString(),
+          versao_termo_imagem: VERSAO_TERMO_IMAGEM,
         })
 
       if (errAluno) throw errAluno
@@ -293,7 +430,6 @@ export default function Matricula() {
         .from('alunos')
         .select('id, numero_matricula')
         .eq('numero_matricula', numMatricula)
-        .order('id', { ascending: false })
         .limit(1)
         .single()
 
@@ -304,8 +440,10 @@ export default function Matricula() {
         .insert({
           aluno_id: alunoBuscado.id,
           nome: form.resp_nome.trim(),
-          telefone: form.resp_telefone.trim(),
-          email: form.resp_email?.trim() || null,
+          telefone: telefoneResponsavelNormalizado,
+          email: emailResponsavelNormalizado,
+          no_grupo_whatsapp: form.responsavel_no_grupo_whatsapp === 'sim',
+          whatsapp_status: 'pendente',
         })
 
       if (errResponsavel) throw errResponsavel
@@ -323,28 +461,37 @@ export default function Matricula() {
 
       if (oficinasDB.length !== oficinasSelecionadas.length) {
         const nomesEncontrados = oficinasDB.map(o => o.nome)
-        const nomesFaltando = oficinasSelecionadas.filter(nome => !nomesEncontrados.includes(nome))
-        throw new Error(`Algumas oficinas não foram encontradas: ${nomesFaltando.join(', ')}`)
+        const nomesFaltando = oficinasSelecionadas.filter(
+          nome => !nomesEncontrados.includes(nome)
+        )
+
+        throw new Error(
+          `Algumas oficinas não foram encontradas: ${nomesFaltando.join(', ')}`
+        )
       }
 
       const payloadOficinas = oficinasDB.map(oficina => ({
         aluno_id: alunoBuscado.id,
         oficina_id: oficina.id,
         ano_letivo: ANO_ATUAL,
+        periodo_letivo: PERIODO_LETIVO,
       }))
 
-      // Busca matrículas que o aluno já tem nesse ano
-      const { data: matriculasExistentes } = await supabase
+      const { data: matriculasExistentes, error: errBuscaMatriculas } = await supabase
         .from('matriculas_oficinas')
         .select('oficina_id')
         .eq('aluno_id', alunoBuscado.id)
         .eq('ano_letivo', ANO_ATUAL)
+        .eq('periodo_letivo', PERIODO_LETIVO)
 
-      const idsJaMatriculados = (matriculasExistentes || []).map(m => m.oficina_id)
+      if (errBuscaMatriculas) throw errBuscaMatriculas
 
-      // Filtra só as oficinas novas
+      const idsJaMatriculados = (matriculasExistentes || []).map(
+        matricula => matricula.oficina_id
+      )
+
       const novasOficinas = payloadOficinas.filter(
-        p => !idsJaMatriculados.includes(p.oficina_id)
+        matricula => !idsJaMatriculados.includes(matricula.oficina_id)
       )
 
       if (novasOficinas.length > 0) {
@@ -355,12 +502,35 @@ export default function Matricula() {
         if (errMatriculas) throw errMatriculas
       }
 
+      const { error: errConfirmacaoWhatsApp } = await supabase.functions.invoke(
+        'enviar-confirmacao-matricula',
+        {
+          body: {
+            aluno_id: alunoBuscado.id,
+          },
+        }
+      )
+
+      if (errConfirmacaoWhatsApp) {
+        console.error(
+          'A matrícula foi concluída, mas não foi possível iniciar a confirmação pelo WhatsApp:',
+          errConfirmacaoWhatsApp
+        )
+      }
+
       setNumeroMatricula(alunoBuscado.numero_matricula)
       setEnviado(true)
       window.scrollTo(0, 0)
     } catch (err) {
       console.error('Erro ao enviar matrícula:', err)
-      setErroGeral(err?.message || 'Erro ao enviar matrícula. Tente novamente.')
+
+      if (err?.code === '23505') {
+        setErroGeral(
+          `Já existe uma matrícula ou rematrícula para este CPF no período ${PERIODO_LETIVO}.`
+        )
+      } else {
+        setErroGeral(err?.message || 'Erro ao enviar matrícula. Tente novamente.')
+      }
     } finally {
       setLoading(false)
     }
@@ -673,6 +843,7 @@ export default function Matricula() {
                   placeholder="email@exemplo.com (opcional)"
                   value={form.resp_email}
                   onChange={e => set('resp_email', e.target.value)}
+                  error={erros.resp_email}
                 />
 
                 <Input
@@ -680,8 +851,10 @@ export default function Matricula() {
                   type="number"
                   min="1"
                   placeholder="Ex: 4"
+                  max="20"
                   value={form.integrantes_familia}
                   onChange={e => set('integrantes_familia', e.target.value)}
+                  error={erros.integrantes_familia}
                 />
 
                 <div>
@@ -773,6 +946,43 @@ export default function Matricula() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="mis-card border border-azul/20">
+              <h3 className="text-sm font-bold text-mis-texto mb-2 flex items-center gap-2">
+                <Users size={16} className="text-azul" />
+                Grupo de responsáveis
+              </h3>
+
+              <p className="text-xs text-mis-texto2 leading-relaxed mb-4">
+                O responsável já participa do grupo oficial de responsáveis da Escola de Música?
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { valor: 'sim', texto: 'Sim' },
+                  { valor: 'nao', texto: 'Não' },
+                ].map(opcao => (
+                  <button
+                    key={opcao.valor}
+                    type="button"
+                    onClick={() => set('responsavel_no_grupo_whatsapp', opcao.valor)}
+                    className={`py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                      form.responsavel_no_grupo_whatsapp === opcao.valor
+                        ? 'bg-azul/15 border-azul text-azul-light'
+                        : 'bg-mis-bg3 border-mis-borda text-mis-texto2'
+                    }`}
+                  >
+                    {opcao.texto}
+                  </button>
+                ))}
+              </div>
+
+              {erros.responsavel_no_grupo_whatsapp && (
+                <p className="text-red-400 text-xs mt-2">
+                  {erros.responsavel_no_grupo_whatsapp}
+                </p>
+              )}
             </div>
 
             <div className="mis-card border border-amarelo/20">

@@ -35,6 +35,7 @@ const BAIRROS = [
 
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
+const PERIODO_PADRAO = '2026.2'
 
 function calcularIdade(aluno) {
   if (Number.isFinite(Number(aluno.idade)) && Number(aluno.idade) > 0) {
@@ -66,15 +67,34 @@ function normalizarProgramaSocial(valor) {
   return []
 }
 
-function extrairOficinasAnoAtual(matriculasOficinas) {
+function extrairOficinasDoPeriodo(matriculasOficinas, periodoLetivo) {
   const registros = Array.isArray(matriculasOficinas) ? matriculasOficinas : []
-  const oficinasAnoAtual = registros
-    .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
+
+  if (periodoLetivo) {
+    const oficinasPeriodo = registros
+      .filter(item => item?.periodo_letivo === periodoLetivo)
+      .map(item => item?.oficinas?.nome)
+      .filter(Boolean)
+
+    if (oficinasPeriodo.length > 0) {
+      return [...new Set(oficinasPeriodo)]
+    }
+
+    // Compatibilidade com registros antigos que ainda não possuam período.
+    const anoPeriodo = Number(String(periodoLetivo).split('.')[0])
+    const oficinasSemPeriodo = registros
+      .filter(item => !item?.periodo_letivo && Number(item?.ano_letivo) === anoPeriodo)
+      .map(item => item?.oficinas?.nome)
+      .filter(Boolean)
+
+    return [...new Set(oficinasSemPeriodo)]
+  }
+
+  const oficinas = registros
     .map(item => item?.oficinas?.nome)
     .filter(Boolean)
-  if (oficinasAnoAtual.length > 0) return [...new Set(oficinasAnoAtual)]
-  const fallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
-  return [...new Set(fallback)]
+
+  return [...new Set(oficinas)]
 }
 
 function tempoRelativo(dataStr) {
@@ -162,17 +182,16 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
       try {
         const { data, error } = await supabase
           .from('matriculas_oficinas')
-          .select(`ano_letivo, oficinas (nome)`)
+          .select(`ano_letivo, periodo_letivo, oficinas (nome)`)
           .eq('aluno_id', aluno.id)
         if (error) throw error
-        const registros = data || []
-        const oficinasAnoAtual = registros
-          .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
-          .map(item => item?.oficinas?.nome)
-          .filter(Boolean)
-        const oficinasFallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
-        const oficinasCarregadas = oficinasAnoAtual.length > 0 ? oficinasAnoAtual : oficinasFallback
-        if (ativo) setForm(f => ({ ...f, oficinas: [...new Set(oficinasCarregadas)] }))
+
+        const periodoAluno = aluno.periodo_letivo || '2026.1'
+        const oficinasCarregadas = extrairOficinasDoPeriodo(data || [], periodoAluno)
+
+        if (ativo) {
+          setForm(f => ({ ...f, oficinas: oficinasCarregadas }))
+        }
       } catch (e) {
         console.error('Erro ao carregar oficinas do aluno:', e)
       } finally {
@@ -181,7 +200,7 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
     }
     carregarOficinasAluno()
     return () => { ativo = false }
-  }, [aluno.id])
+  }, [aluno.id, aluno.periodo_letivo])
 
   async function salvar() {
     if (!form.nome.trim()) { setErro('Nome obrigatório'); return }
@@ -189,6 +208,8 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
     setErro('')
     try {
       const sexoMap = { Masculino: 'M', Feminino: 'F', Outro: 'Outro' }
+      const periodoAluno = aluno.periodo_letivo || '2026.1'
+      const anoAluno = Number(aluno.ano_letivo) || ANO_ATUAL
 
       const { error: errorAluno } = await supabase
         .from('alunos')
@@ -224,7 +245,8 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
             .from('matriculas_oficinas')
             .select('oficina_id')
             .eq('aluno_id', aluno.id)
-            .eq('ano_letivo', ANO_ATUAL)
+            .eq('ano_letivo', anoAluno)
+            .eq('periodo_letivo', periodoAluno)
 
           const idsExistentes = (jaMatriculado || []).map(m => m.oficina_id)
 
@@ -234,7 +256,8 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
             .map(oficina => ({
               aluno_id: aluno.id,
               oficina_id: oficina.id,
-              ano_letivo: ANO_ATUAL
+              ano_letivo: anoAluno,
+              periodo_letivo: periodoAluno
             }))
 
           if (novas.length > 0) {
@@ -274,7 +297,9 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
         <div className="flex items-center justify-between p-5 border-b border-mis-borda">
           <div>
             <h2 className="text-base font-bold text-mis-texto">Editar Aluno</h2>
-            <p className="text-xs text-mis-texto2 mt-0.5">{aluno.numero_matricula}</p>
+            <p className="text-xs text-mis-texto2 mt-0.5">
+              {aluno.numero_matricula} · {aluno.periodo_letivo || aluno.ano_letivo}
+            </p>
             {calcularIdade(aluno) !== null && (
               <span className="inline-block mt-1.5 bg-amarelo/15 border border-amarelo/40 text-amarelo text-xs font-bold px-2 py-0.5 rounded-full">
                 {calcularIdade(aluno)} anos
@@ -625,6 +650,7 @@ export default function Alunos() {
   const [alunos, setAlunos] = useState([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
+  const [filtroPeriodo, setFiltroPeriodo] = useState(PERIODO_PADRAO)
   const [filtroStatus, setFiltroStatus] = useState('ativo')
   const [filtroOficina, setFiltroOficina] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -647,10 +673,15 @@ export default function Alunos() {
           matriculas_oficinas (
             oficina_id,
             ano_letivo,
+            periodo_letivo,
             oficinas (nome)
           )
         `)
         .eq('ano_letivo', ANO_ATUAL)
+
+      if (filtroPeriodo) {
+        query = query.eq('periodo_letivo', filtroPeriodo)
+      }
 
       if (ordenacao === 'recentes') {
         query = query.order('created_at', { ascending: false })
@@ -669,7 +700,10 @@ export default function Alunos() {
 
       if (filtroOficina) {
         resultado = resultado.filter(aluno => {
-          const oficinas = extrairOficinasAnoAtual(aluno.matriculas_oficinas)
+          const oficinas = extrairOficinasDoPeriodo(
+            aluno.matriculas_oficinas,
+            aluno.periodo_letivo || filtroPeriodo
+          )
           return oficinas.includes(filtroOficina)
         })
       }
@@ -683,7 +717,7 @@ export default function Alunos() {
     } finally {
       setLoading(false)
     }
-  }, [busca, filtroStatus, filtroOficina, filtroTipo, ordenacao])
+  }, [busca, filtroPeriodo, filtroStatus, filtroOficina, filtroTipo, ordenacao])
 
   useEffect(() => {
     const t = setTimeout(buscarAlunos, 300)
@@ -720,6 +754,7 @@ export default function Alunos() {
   }
 
   function limparFiltros() {
+    setFiltroPeriodo(PERIODO_PADRAO)
     setFiltroStatus('ativo')
     setFiltroOficina('')
     setFiltroTipo('')
@@ -727,7 +762,7 @@ export default function Alunos() {
     setBusca('')
   }
 
-  const filtrosAtivos = filtroStatus !== 'ativo' || filtroOficina || filtroTipo || ordenacao !== 'nome'
+  const filtrosAtivos = filtroPeriodo !== PERIODO_PADRAO || filtroStatus !== 'ativo' || filtroOficina || filtroTipo || ordenacao !== 'nome'
 
   return (
     <div className="animate-fade-in">
@@ -735,7 +770,8 @@ export default function Alunos() {
         <div>
           <h1 className="page-title">Alunos</h1>
           <p className="text-mis-texto2 text-sm mt-1">
-            {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} · {ANO_ATUAL}
+            {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} ·{' '}
+            {filtroPeriodo || `Todos os períodos de ${ANO_ATUAL}`}
           </p>
         </div>
       </div>
@@ -774,7 +810,19 @@ export default function Alunos() {
         </div>
 
         {mostrarFiltros && (
-          <div className="mt-4 pt-4 border-t border-mis-borda grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in">
+          <div className="mt-4 pt-4 border-t border-mis-borda grid grid-cols-1 md:grid-cols-4 gap-3 animate-fade-in">
+            <div>
+              <label className="mis-label">Período letivo</label>
+              <select
+                className="mis-input"
+                value={filtroPeriodo}
+                onChange={e => setFiltroPeriodo(e.target.value)}
+              >
+                <option value="2026.2">2026.2</option>
+                <option value="2026.1">2026.1</option>
+                <option value="">Todos os períodos</option>
+              </select>
+            </div>
             <div>
               <label className="mis-label">Status</label>
               <select className="mis-input" value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
@@ -799,7 +847,7 @@ export default function Alunos() {
               </select>
             </div>
             {filtrosAtivos && (
-              <button onClick={limparFiltros} className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-3 w-fit">
+              <button onClick={limparFiltros} className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-4 w-fit">
                 <X size={12} />
                 Limpar filtros
               </button>
@@ -824,7 +872,10 @@ export default function Alunos() {
       ) : (
         <div className="space-y-2">
           {alunos.map(aluno => {
-            const oficinas = extrairOficinasAnoAtual(aluno.matriculas_oficinas)
+            const oficinas = extrairOficinasDoPeriodo(
+              aluno.matriculas_oficinas,
+              aluno.periodo_letivo || filtroPeriodo
+            )
             const responsavel = aluno.responsaveis?.[0]
             const idade = calcularIdade(aluno)
 
@@ -848,6 +899,11 @@ export default function Alunos() {
                     <span className={`badge ${aluno.tipo === 'rematricula' ? 'badge-azul' : 'badge-gray'}`}>
                       {aluno.tipo}
                     </span>
+                    {!filtroPeriodo && (
+                      <span className="badge badge-gray">
+                        {aluno.periodo_letivo || aluno.ano_letivo}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 mt-0.5">

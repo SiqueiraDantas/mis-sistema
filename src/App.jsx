@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { PeriodoProvider } from './contexts/PeriodoContext'
 import { PrivateRoute, RoleRoute } from './routes/PrivateRoute'
 
 // Auth
@@ -23,70 +24,94 @@ import DevPanel from './pages/Dev/DevPanel'
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* PÚBLICO */}
-          <Route path="/matricula" element={<Matricula />} />
+      <PeriodoProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* PÚBLICO */}
+            <Route path="/matricula" element={<Matricula />} />
 
-          {/* AUTH */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/recuperar-senha" element={<RecoverPassword />} />
-
-          {/* SISTEMA INTERNO */}
-          <Route
-            path="/"
-            element={
-              <PrivateRoute>
-                <Layout />
-              </PrivateRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<ProfessorDashboard />} />
-            <Route path="turmas" element={<Turmas />} />
-            <Route path="planos-aula" element={<PlanosAula />} />
-            <Route path="frequencia" element={<Frequencia />} />
-
+            {/* AUTH */}
+            <Route path="/login" element={<Login />} />
             <Route
-              path="alunos"
-              element={
-                <RoleRoute perfil="diretor">
-                  <Alunos />
-                </RoleRoute>
-              }
+              path="/recuperar-senha"
+              element={<RecoverPassword />}
             />
 
+            {/* SISTEMA INTERNO */}
             <Route
-              path="diretor"
+              path="/"
               element={
-                <RoleRoute perfil="diretor">
-                  <DiretorDashboard />
-                </RoleRoute>
+                <PrivateRoute>
+                  <Layout />
+                </PrivateRoute>
               }
-            />
+            >
+              <Route
+                index
+                element={<Navigate to="/dashboard" replace />}
+              />
+
+              <Route
+                path="dashboard"
+                element={<ProfessorDashboard />}
+              />
+
+              <Route path="turmas" element={<Turmas />} />
+
+              <Route
+                path="planos-aula"
+                element={<PlanosAula />}
+              />
+
+              <Route
+                path="frequencia"
+                element={<Frequencia />}
+              />
+
+              <Route
+                path="alunos"
+                element={
+                  <RoleRoute perfil="diretor">
+                    <Alunos />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="diretor"
+                element={
+                  <RoleRoute perfil="diretor">
+                    <DiretorDashboard />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="relatorios"
+                element={
+                  <RoleRoute perfil="diretor">
+                    <Relatorios />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="dev-panel"
+                element={
+                  <RoleRoute perfil="dev">
+                    <DevPanel />
+                  </RoleRoute>
+                }
+              />
+            </Route>
 
             <Route
-              path="relatorios"
-              element={
-                <RoleRoute perfil="diretor">
-                  <Relatorios />
-                </RoleRoute>
-              }
+              path="*"
+              element={<Navigate to="/login" replace />}
             />
-
-            <Route
-              path="dev-panel"
-              element={
-                <RoleRoute perfil="dev">
-                  <DevPanel />
-                </RoleRoute>
-              }
-            />
-          </Route>
-
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </PeriodoProvider>
     </AuthProvider>
   )
 }

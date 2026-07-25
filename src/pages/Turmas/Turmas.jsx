@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePeriodo } from '../../contexts/PeriodoContext'
 import { Plus, X, Save, Trash2, Users, BookOpen, ChevronRight, AlertCircle, Check, Search, Calendar } from 'lucide-react'
 
 const OFICINAS = ['Flauta Doce','Clarinete','Trompete','Trombone','Saxofone','Trompa','Euphonio','Tuba','Percussão','Bateria','Flauta Transversal','Flauta Doce (Macaoca)','Violão (Macaoca)']
 const DIAS = ['Segunda','Terça','Quarta','Quinta','Sexta']
 const ANO_ATUAL = new Date().getFullYear()
 
-function ModalTurma({ turma, professores, onClose, onSalvo }) {
+function ModalTurma({ turma, professores, periodoLetivo, somenteLeitura, onClose, onSalvo }) {
   const editando = !!turma
   const diasAtuais = turma?.dias_semana?.length > 0 ? turma.dias_semana : turma?.dia_semana ? [turma.dia_semana] : []
   const [form, setForm] = useState({
@@ -46,6 +47,11 @@ function ModalTurma({ turma, professores, onClose, onSalvo }) {
   }
 
   async function salvar() {
+    if (somenteLeitura) {
+      setErro('O período histórico está disponível somente para consulta.')
+      return
+    }
+
     if (!form.nome.trim()) {
       setErro('Nome da turma obrigatório')
       return
@@ -79,8 +85,19 @@ function ModalTurma({ turma, professores, onClose, onSalvo }) {
       }
 
       const { error } = editando
-        ? await supabase.from('turmas').update(payload).eq('id', turma.id)
-        : await supabase.from('turmas').insert({ ...payload, ano_letivo: ANO_ATUAL, ativa: true })
+        ? await supabase
+            .from('turmas')
+            .update(payload)
+            .eq('id', turma.id)
+            .eq('periodo_letivo', periodoLetivo)
+        : await supabase
+            .from('turmas')
+            .insert({
+              ...payload,
+              ano_letivo: ANO_ATUAL,
+              periodo_letivo: periodoLetivo,
+              ativa: true,
+            })
 
       if (error) throw error
       onSalvo()
@@ -209,7 +226,7 @@ function ModalTurma({ turma, professores, onClose, onSalvo }) {
   )
 }
 
-function ModalAlunos({ turma, onClose }) {
+function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
   const [alunosTurma, setAlunosTurma] = useState([])
   const [todosAlunos, setTodosAlunos] = useState([])
   const [busca, setBusca] = useState('')
@@ -226,6 +243,7 @@ function ModalAlunos({ turma, onClose }) {
           .from('frequencias')
           .select('aluno_id')
           .eq('turma_id', turma.id)
+          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null),
 
         supabase
@@ -236,11 +254,12 @@ function ModalAlunos({ turma, onClose }) {
             numero_matricula,
             matriculas_oficinas (
               ano_letivo,
+              periodo_letivo,
               oficinas (nome)
             )
           `)
           .eq('status', 'ativo')
-          .eq('ano_letivo', ANO_ATUAL)
+          .eq('periodo_letivo', periodoLetivo)
           .order('nome')
       ])
 
@@ -257,9 +276,11 @@ function ModalAlunos({ turma, onClose }) {
 
   useEffect(() => {
     carregar()
-  }, [])
+  }, [turma.id, periodoLetivo])
 
   async function toggleAluno(alunoId) {
+    if (somenteLeitura) return
+
     setSalvando(alunoId)
 
     try {
@@ -271,6 +292,7 @@ function ModalAlunos({ turma, onClose }) {
           .delete()
           .eq('turma_id', turma.id)
           .eq('aluno_id', alunoId)
+          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null)
 
         setAlunosTurma(prev => prev.filter(x => x !== alunoId))
@@ -280,6 +302,7 @@ function ModalAlunos({ turma, onClose }) {
           .select('id')
           .eq('turma_id', turma.id)
           .eq('aluno_id', alunoId)
+          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null)
           .maybeSingle()
 
@@ -290,7 +313,8 @@ function ModalAlunos({ turma, onClose }) {
               turma_id: turma.id,
               aluno_id: alunoId,
               data_aula: null,
-              status: 'presente'
+              status: 'presente',
+              periodo_letivo: periodoLetivo,
             })
 
           if (error) throw error
@@ -309,16 +333,12 @@ function ModalAlunos({ turma, onClose }) {
     const nomeOk = aluno.nome.toLowerCase().includes(busca.toLowerCase())
 
     const oficinasAluno = (aluno.matriculas_oficinas || [])
-      .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
+      .filter(item => item?.periodo_letivo === periodoLetivo)
       .map(item => item?.oficinas?.nome)
       .filter(Boolean)
 
-    const oficinasFallback = (aluno.matriculas_oficinas || [])
-      .map(item => item?.oficinas?.nome)
-      .filter(Boolean)
-
-    const listaOficinas = oficinasAluno.length > 0 ? oficinasAluno : oficinasFallback
-    const oficinaOk = !filtroOficina || listaOficinas.includes(filtroOficina)
+    const oficinaOk =
+      !filtroOficina || oficinasAluno.includes(filtroOficina)
 
     return nomeOk && oficinaOk
   })
@@ -378,7 +398,7 @@ function ModalAlunos({ turma, onClose }) {
                     <button
                       key={aluno.id}
                       onClick={() => toggleAluno(aluno.id)}
-                      disabled={salvando === aluno.id}
+                      disabled={somenteLeitura || salvando === aluno.id}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left
                         ${vinculado
                           ? 'bg-amarelo/10 border-amarelo/40'
@@ -457,7 +477,7 @@ function ModalExcluir({ turma, onClose, onConfirmar }) {
   )
 }
 
-function GradeSemanal({ turmas, onClose }) {
+function GradeSemanal({ turmas, periodoLetivo, onClose }) {
   const horarios = [...new Set(turmas.map(t => t.horario_inicio))].sort()
 
   return createPortal(
@@ -468,7 +488,7 @@ function GradeSemanal({ turmas, onClose }) {
             <div>
               <h2 className="text-sm font-bold text-mis-texto">Grade Semanal</h2>
               <p className="text-xs text-mis-texto2 mt-0.5">
-                {ANO_ATUAL} · {turmas.length} turma{turmas.length !== 1 ? 's' : ''}
+                {periodoLetivo} · {turmas.length} turma{turmas.length !== 1 ? 's' : ''}
               </p>
             </div>
             <button onClick={onClose} className="text-mis-texto2 hover:text-mis-texto p-1">
@@ -539,6 +559,7 @@ function GradeSemanal({ turmas, onClose }) {
 
 export default function Turmas() {
   const { isDiretor } = useAuth()
+  const { periodoLetivo, somenteLeitura } = usePeriodo()
   const [turmas, setTurmas] = useState([])
   const [professores, setProfessores] = useState([])
   const [loading, setLoading] = useState(true)
@@ -557,8 +578,8 @@ export default function Turmas() {
       const [{ data: t, error: e1 }, { data: p }] = await Promise.all([
         supabase
           .from('turmas')
-          .select('id, nome, dia_semana, dias_semana, horario_inicio, horario_fim, vagas, ativa, ano_letivo, oficina_id, professor_id, oficinas(id,nome), profiles(id,nome)')
-          .eq('ano_letivo', ANO_ATUAL)
+          .select('id, nome, dia_semana, dias_semana, horario_inicio, horario_fim, vagas, ativa, ano_letivo, periodo_letivo, oficina_id, professor_id, oficinas(id,nome), profiles(id,nome)')
+          .eq('periodo_letivo', periodoLetivo)
           .order('horario_inicio'),
 
         supabase
@@ -577,15 +598,27 @@ export default function Turmas() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [periodoLetivo])
 
   useEffect(() => {
     buscarDados()
   }, [buscarDados])
 
   async function excluirTurma(turma) {
-    await supabase.from('frequencias').delete().eq('turma_id', turma.id)
-    await supabase.from('turmas').delete().eq('id', turma.id)
+    if (somenteLeitura) return
+
+    await supabase
+      .from('frequencias')
+      .delete()
+      .eq('turma_id', turma.id)
+      .eq('periodo_letivo', periodoLetivo)
+
+    await supabase
+      .from('turmas')
+      .delete()
+      .eq('id', turma.id)
+      .eq('periodo_letivo', periodoLetivo)
+
     setTurmaExcluir(null)
     buscarDados()
   }
@@ -605,7 +638,7 @@ export default function Turmas() {
         <div>
           <h1 className="page-title">Turmas</h1>
           <p className="text-mis-texto2 text-sm mt-1">
-            {turmas.length} turma{turmas.length !== 1 ? 's' : ''} · {ANO_ATUAL}
+            {turmas.length} turma{turmas.length !== 1 ? 's' : ''} · {periodoLetivo}
           </p>
         </div>
 
@@ -617,7 +650,7 @@ export default function Turmas() {
             <Calendar size={14} /> Grade Semanal
           </button>
 
-          {isDiretor && (
+          {isDiretor && !somenteLeitura && (
             <button
               onClick={() => setModalNova(true)}
               className="btn-primary flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
@@ -627,6 +660,18 @@ export default function Turmas() {
           )}
         </div>
       </div>
+
+      {somenteLeitura && (
+        <div className="mb-4 bg-amarelo/10 border border-amarelo/30 rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-amarelo">
+            Período histórico: {periodoLetivo}
+          </p>
+          <p className="text-xs text-mis-texto2 mt-1">
+            As turmas podem ser consultadas, mas não podem ser criadas,
+            alteradas, excluídas ou receber novos alunos.
+          </p>
+        </div>
+      )}
 
       <div className="mis-card mb-4">
         <div className="grid grid-cols-2 gap-3">
@@ -663,7 +708,7 @@ export default function Turmas() {
         <div className="mis-card flex flex-col items-center justify-center py-16 text-center">
           <BookOpen size={36} className="text-mis-borda mb-3" />
           <p className="text-mis-texto font-semibold mb-1">Nenhuma turma encontrada</p>
-          {isDiretor && (
+          {isDiretor && !somenteLeitura && (
             <button onClick={() => setModalNova(true)} className="btn-primary mt-3 flex items-center gap-2 px-4 py-2 text-sm">
               <Plus size={14} /> Criar primeira turma
             </button>
@@ -704,7 +749,7 @@ export default function Turmas() {
                       <Users size={14} />
                     </button>
 
-                    {isDiretor && (
+                    {isDiretor && !somenteLeitura && (
                       <>
                         <button
                           onClick={() => setTurmaEditar(turma)}
@@ -731,10 +776,12 @@ export default function Turmas() {
         </div>
       )}
 
-      {(modalNova || turmaEditar) && (
+      {!somenteLeitura && (modalNova || turmaEditar) && (
         <ModalTurma
           turma={turmaEditar}
           professores={professores}
+          periodoLetivo={periodoLetivo}
+          somenteLeitura={somenteLeitura}
           onClose={() => {
             setModalNova(false)
             setTurmaEditar(null)
@@ -747,7 +794,7 @@ export default function Turmas() {
         />
       )}
 
-      {turmaExcluir && (
+      {!somenteLeitura && turmaExcluir && (
         <ModalExcluir
           turma={turmaExcluir}
           onClose={() => setTurmaExcluir(null)}
@@ -758,6 +805,8 @@ export default function Turmas() {
       {turmaAlunos && (
         <ModalAlunos
           turma={turmaAlunos}
+          periodoLetivo={periodoLetivo}
+          somenteLeitura={somenteLeitura}
           onClose={() => {
             setTurmaAlunos(null)
             buscarDados()
@@ -766,7 +815,7 @@ export default function Turmas() {
       )}
 
       {mostrarGrade && (
-        <GradeSemanal turmas={turmas} onClose={() => setMostrarGrade(false)} />
+        <GradeSemanal turmas={turmas} periodoLetivo={periodoLetivo} onClose={() => setMostrarGrade(false)} />
       )}
     </div>
   )
