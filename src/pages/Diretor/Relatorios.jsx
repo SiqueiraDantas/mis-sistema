@@ -1,20 +1,27 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../services/supabase'
+import { usePeriodo } from '../../contexts/PeriodoContext'
 import {
   BarChart2, Users, TrendingUp, Download, FileText,
   Loader, Calendar, AlertCircle, Eye, X, CheckCircle,
   Award, Activity, BookOpen, ChevronDown, ChevronUp
 } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Cell, PieChart, Pie, Legend
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
 
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2bXVjZHVmaWFhbGNrYWNtbG1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk5OTY3NTcsImV4cCI6MjA1NTU3Mjc1N30.jbPPObfQvVWMBVBqTHMzHoFQJCiVoANFEF5nA6tL6BI'
 const MESES_NOMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 // ─── MODAL RELATÓRIO SECULT ──────────────────────────────────────────────────
-function ModalRelatorio({ onClose }) {
+function ModalRelatorio({ onClose, periodoLetivo }) {
+  const anoPeriodo = periodoLetivo.split('.')[0]
+  const segundoSemestre = periodoLetivo.endsWith('.2')
+  const dataMinima = segundoSemestre
+    ? `${anoPeriodo}-07-01`
+    : `${anoPeriodo}-01-01`
+  const dataMaxima = segundoSemestre
+    ? `${anoPeriodo}-12-31`
+    : `${anoPeriodo}-06-30`
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
@@ -34,15 +41,60 @@ function ModalRelatorio({ onClose }) {
   function setF(k, v) { setForm(p => ({ ...p, [k]: v })) }
 
   async function buscarPreview() {
-    if (!form.data_inicio || !form.data_fim) { setErro('Informe o período'); return }
-    if (form.data_inicio > form.data_fim) { setErro('Data início deve ser anterior ao fim'); return }
-    setLoading(true); setErro('')
+    if (!form.data_inicio || !form.data_fim) {
+      setErro('Informe o período')
+      return
+    }
+
+    if (form.data_inicio > form.data_fim) {
+      setErro('Data início deve ser anterior ao fim')
+      return
+    }
+
+    if (
+      form.data_inicio < dataMinima ||
+      form.data_fim > dataMaxima
+    ) {
+      setErro(
+        `Escolha datas dentro do período ${periodoLetivo}: ` +
+        `${dataMinima.split('-').reverse().join('/')} a ` +
+        `${dataMaxima.split('-').reverse().join('/')}.`
+      )
+      return
+    }
+
+    setLoading(true)
+    setErro('')
+
     try {
-      const [{ data: freqs }, { data: matriculas }, { data: aulas }] = await Promise.all([
-        supabase.from('frequencias').select('status').gte('data_aula', form.data_inicio).lte('data_aula', form.data_fim),
-        supabase.from('matriculas_oficinas').select('aluno_id'),
-        supabase.from('planos_aula').select('data_aula').gte('data_aula', form.data_inicio).lte('data_aula', form.data_fim),
+      const [
+        { data: freqs, error: erroFreqs },
+        { data: matriculas, error: erroMatriculas },
+        { data: aulas, error: erroAulas },
+      ] = await Promise.all([
+        supabase
+          .from('frequencias')
+          .select('status')
+          .eq('periodo_letivo', periodoLetivo)
+          .gte('data_aula', form.data_inicio)
+          .lte('data_aula', form.data_fim),
+
+        supabase
+          .from('matriculas_oficinas')
+          .select('aluno_id')
+          .eq('periodo_letivo', periodoLetivo),
+
+        supabase
+          .from('planos_aula')
+          .select('data_aula')
+          .eq('periodo_letivo', periodoLetivo)
+          .gte('data_aula', form.data_inicio)
+          .lte('data_aula', form.data_fim),
       ])
+
+      if (erroFreqs) throw erroFreqs
+      if (erroMatriculas) throw erroMatriculas
+      if (erroAulas) throw erroAulas
       const totalFreqs = (freqs || []).length
       const presencas = (freqs || []).filter(f => f.status === 'presente').length
       const percentual = totalFreqs > 0 ? Math.round((presencas / totalFreqs) * 100) : 0
@@ -54,29 +106,65 @@ function ModalRelatorio({ onClose }) {
   }
 
   async function exportar() {
-    setLoading(true); setErro('')
+    setLoading(true)
+    setErro('')
+
     try {
-      const resp = await fetch('https://rvmucdufiaalckacmlmi.supabase.co/functions/v1/gerar-relatorio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
-        body: JSON.stringify(form)
-      })
-      if (!resp.ok) {
-        const text = await resp.text()
-        let msg = 'Erro ao gerar'
-        try { msg = JSON.parse(text).erro || msg } catch {}
-        throw new Error(msg)
+      const { data, error } = await supabase.functions.invoke(
+        'gerar-relatorio',
+        {
+          body: {
+            ...form,
+            periodo_letivo: periodoLetivo,
+          },
+        }
+      )
+
+      if (error) throw error
+
+      if (
+        data &&
+        typeof data === 'object' &&
+        !(data instanceof Blob) &&
+        !(data instanceof ArrayBuffer) &&
+        data.erro
+      ) {
+        throw new Error(data.erro)
       }
-      const blob = await resp.blob()
+
+      let blob
+
+      if (data instanceof Blob) {
+        blob = data
+      } else if (data instanceof ArrayBuffer) {
+        blob = new Blob([data], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        })
+      } else {
+        throw new Error(
+          'A função não retornou um documento válido.'
+        )
+      }
+
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
+
       a.href = url
-      a.download = `Relatorio_Execucao_${form.data_inicio}_${form.data_fim}.docx`
+      a.download =
+        `Relatorio_Execucao_${periodoLetivo.replace('.', '_')}_` +
+        `${form.data_inicio}_${form.data_fim}.docx`
+
       a.click()
       URL.revokeObjectURL(url)
       onClose()
-    } catch (e) { setErro('Erro: ' + (e?.message || 'Tente novamente')) }
-    finally { setLoading(false) }
+    } catch (e) {
+      setErro(
+        'Erro: ' +
+        (e?.message || 'Tente novamente')
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fmtDate = d => d ? d.split('-').reverse().join('/') : ''
@@ -92,7 +180,7 @@ function ModalRelatorio({ onClose }) {
             </div>
             <div>
               <h2 className="font-bold text-mis-texto text-sm">Relatório de Execução</h2>
-              <p className="text-xs text-mis-texto2">Formato SECULT-CE</p>
+              <p className="text-xs text-mis-texto2">Formato SECULT-CE · {periodoLetivo}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -116,11 +204,11 @@ function ModalRelatorio({ onClose }) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mis-label">Data início</label>
-                    <input className="mis-input" type="date" value={form.data_inicio} onChange={e => setF('data_inicio', e.target.value)}/>
+                    <input className="mis-input" type="date" min={dataMinima} max={dataMaxima} value={form.data_inicio} onChange={e => setF('data_inicio', e.target.value)}/>
                   </div>
                   <div>
                     <label className="mis-label">Data fim</label>
-                    <input className="mis-input" type="date" value={form.data_fim} onChange={e => setF('data_fim', e.target.value)}/>
+                    <input className="mis-input" type="date" min={dataMinima} max={dataMaxima} value={form.data_fim} onChange={e => setF('data_fim', e.target.value)}/>
                   </div>
                 </div>
               </div>
@@ -261,6 +349,8 @@ function CustomTooltip({ active, payload, label }) {
 
 // ─── PÁGINA RELATÓRIOS ────────────────────────────────────────────────────────
 export default function Relatorios() {
+  const { periodoLetivo } = usePeriodo()
+  const anoPeriodo = periodoLetivo.split('.')[0]
   const [loading, setLoading] = useState(true)
   const [modalAberto, setModalAberto] = useState(false)
   const [rankingExpandido, setRankingExpandido] = useState(false)
@@ -275,32 +365,93 @@ export default function Relatorios() {
     async function load() {
       setLoading(true)
       try {
-        const anoAtual = new Date().getFullYear()
-        const inicio = `${anoAtual}-01-01`
-        const fim = `${anoAtual}-12-31`
+        const inicio = `${anoPeriodo}-01-01`
+        const fim = `${anoPeriodo}-12-31`
+
+        /*
+         * Zera imediatamente os dados da tela durante a troca de período,
+         * evitando que números de 2026.1 permaneçam visíveis em 2026.2.
+         */
+        setKpis({
+          totalAlunos: 0,
+          totalAulas: 0,
+          mediaFreq: 0,
+          oficinasAtivas: 0,
+        })
+        setFreqPorOficina([])
+        setAulasPorMes([])
+        setRankingAlunos([])
+        setAulasVsMeta([])
+        setRankingExpandido(false)
 
         const [
-          { data: freqs },
-          { data: matriculas },
-          { data: oficinas },
-          { data: aulas },
+          { data: freqs, error: erroFreqs },
+          { data: matriculas, error: erroMatriculas },
+          { data: oficinas, error: erroOficinas },
+          { data: aulas, error: erroAulas },
         ] = await Promise.all([
-          supabase.from('frequencias').select('aluno_id, status, turma_id, data_aula').gte('data_aula', inicio).lte('data_aula', fim),
-          supabase.from('matriculas_oficinas').select('aluno_id, oficina_id, oficinas(nome)'),
-          supabase.from('oficinas').select('id, nome').eq('ativo', true),
-          supabase.from('planos_aula').select('data_aula, turma_id').gte('data_aula', inicio).lte('data_aula', fim),
+          supabase
+            .from('frequencias')
+            .select('aluno_id, status, turma_id, data_aula')
+            .eq('periodo_letivo', periodoLetivo)
+            .gte('data_aula', inicio)
+            .lte('data_aula', fim),
+
+          supabase
+            .from('matriculas_oficinas')
+            .select('aluno_id, oficina_id, oficinas(nome)')
+            .eq('periodo_letivo', periodoLetivo),
+
+          supabase
+            .from('oficinas')
+            .select('id, nome')
+            .eq('ativo', true),
+
+          supabase
+            .from('planos_aula')
+            .select('data_aula, turma_id')
+            .eq('periodo_letivo', periodoLetivo)
+            .gte('data_aula', inicio)
+            .lte('data_aula', fim),
         ])
 
-        const totalAlunos = new Set((matriculas || []).map(m => m.aluno_id)).size
+        if (erroFreqs) throw erroFreqs
+        if (erroMatriculas) throw erroMatriculas
+        if (erroOficinas) throw erroOficinas
+        if (erroAulas) throw erroAulas
+
+        const idsOficinasDoPeriodo = new Set(
+          (matriculas || []).map(m => m.oficina_id)
+        )
+
+        const oficinasDoPeriodo = (oficinas || []).filter(
+          oficina => idsOficinasDoPeriodo.has(oficina.id)
+        )
+
+        const totalAlunos = new Set(
+          (matriculas || []).map(m => m.aluno_id)
+        ).size
+
         const totalAulas = (aulas || []).length
         const totalFreqs = (freqs || []).length
-        const presencas = (freqs || []).filter(f => f.status === 'presente').length
-        const mediaFreq = totalFreqs > 0 ? Math.round((presencas / totalFreqs) * 100) : 0
+        const presencas = (freqs || []).filter(
+          f => f.status === 'presente'
+        ).length
 
-        setKpis({ totalAlunos, totalAulas, mediaFreq, oficinasAtivas: (oficinas || []).length })
+        const mediaFreq =
+          totalFreqs > 0
+            ? Math.round((presencas / totalFreqs) * 100)
+            : 0
+
+        setKpis({
+          totalAlunos,
+          totalAulas,
+          mediaFreq,
+          oficinasAtivas: oficinasDoPeriodo.length,
+        })
 
         // Frequência % por oficina
-        const porOficina = (oficinas || []).map(of => {
+        const porOficina = oficinasDoPeriodo.map(of => {
           // alunos matriculados nessa oficina
           const alunosOf = new Set((matriculas || []).filter(m => m.oficina_id === of.id).map(m => m.aluno_id))
           const freqsOf = (freqs || []).filter(f => alunosOf.has(f.aluno_id))
@@ -313,7 +464,7 @@ export default function Relatorios() {
         // Aulas por mês
         const porMes = MESES_NOMES.map((m, i) => {
           const mes = String(i + 1).padStart(2, '0')
-          const count = (aulas || []).filter(a => a.data_aula?.startsWith(`${anoAtual}-${mes}`)).length
+          const count = (aulas || []).filter(a => a.data_aula?.startsWith(`${anoPeriodo}-${mes}`)).length
           return { mes: m, Aulas: count }
         })
         setAulasPorMes(porMes)
@@ -332,7 +483,11 @@ export default function Relatorios() {
         // Buscar nomes
         const alunoIds = Object.keys(porAluno)
         if (alunoIds.length > 0) {
-          const { data: alunosData } = await supabase.from('alunos').select('id, nome').in('id', alunoIds)
+          const { data: alunosData } = await supabase
+            .from('alunos')
+            .select('id, nome')
+            .eq('periodo_letivo', periodoLetivo)
+            .in('id', alunoIds)
           for (const al of (alunosData || [])) {
             if (porAluno[al.id]) porAluno[al.id].nome = al.nome
           }
@@ -344,10 +499,10 @@ export default function Relatorios() {
         setRankingAlunos(ranking)
 
         // Aulas dadas vs meta (8 aulas/mês por oficina como referência)
-        const metaMensal = (oficinas || []).length * 4
+        const metaMensal = oficinasDoPeriodo.length * 4
         const aulasVsMetaData = MESES_NOMES.map((m, i) => {
           const mes = String(i + 1).padStart(2, '0')
-          const dadas = (aulas || []).filter(a => a.data_aula?.startsWith(`${anoAtual}-${mes}`)).length
+          const dadas = (aulas || []).filter(a => a.data_aula?.startsWith(`${anoPeriodo}-${mes}`)).length
           return { mes: m, Dadas: dadas, Meta: metaMensal }
         })
         setAulasVsMeta(aulasVsMetaData)
@@ -356,7 +511,7 @@ export default function Relatorios() {
       finally { setLoading(false) }
     }
     load()
-  }, [])
+  }, [periodoLetivo, anoPeriodo])
 
   const CORES = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899']
 
@@ -374,7 +529,7 @@ export default function Relatorios() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Relatórios</h1>
-          <p className="text-mis-texto2 text-sm mt-1">Visão geral do desempenho da escola · {new Date().getFullYear()}</p>
+          <p className="text-mis-texto2 text-sm mt-1">Visão geral do desempenho da escola · período {periodoLetivo}</p>
         </div>
         <button onClick={() => setModalAberto(true)} className="btn-primary flex items-center gap-2 px-4 py-2.5 text-sm">
           <Download size={15}/> Relatório SECULT
@@ -503,7 +658,12 @@ export default function Relatorios() {
         )}
       </div>
 
-      {modalAberto && <ModalRelatorio onClose={() => setModalAberto(false)}/>}
+      {modalAberto && (
+        <ModalRelatorio
+          periodoLetivo={periodoLetivo}
+          onClose={() => setModalAberto(false)}
+        />
+      )}
     </div>
   )
 }
