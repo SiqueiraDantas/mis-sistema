@@ -677,7 +677,8 @@ export default function DiretorDashboard() {
               programa_social,
               integrantes_familia,
               tipo,
-              escola_origem
+              escola_origem,
+              bairro
             `)
             .eq('status', 'ativo')
             .eq('periodo_letivo', periodoLetivo),
@@ -782,11 +783,30 @@ export default function DiretorDashboard() {
 
         const localidadesMap = {}
 
-        ;(localidadesManuais || []).forEach(item => {
-          const nome = item.localidade?.trim() || 'Não informado'
-          const qtd = Number(item.quantidade_alunos) || 0
-          localidadesMap[nome] = (localidadesMap[nome] || 0) + qtd
-        })
+        /*
+         * Quando houver localidades cadastradas manualmente para o período,
+         * elas continuam sendo utilizadas. Isso preserva o histórico antigo.
+         *
+         * Quando não houver registros manuais, como em 2026.2, o painel
+         * calcula automaticamente os bairros informados nas matrículas.
+         */
+        if ((localidadesManuais || []).length > 0) {
+          ;(localidadesManuais || []).forEach(item => {
+            const nome = item.localidade?.trim() || 'Não informado'
+            const qtd = Number(item.quantidade_alunos) || 0
+
+            localidadesMap[nome] = (localidadesMap[nome] || 0) + qtd
+          })
+        } else {
+          ap.forEach(aluno => {
+            const nome =
+              typeof aluno.bairro === 'string' && aluno.bairro.trim()
+                ? aluno.bairro.trim()
+                : 'Não informado'
+
+            localidadesMap[nome] = (localidadesMap[nome] || 0) + 1
+          })
+        }
 
         const totalLocalidades = Object.values(localidadesMap)
           .reduce((total, qtd) => total + qtd, 0)
