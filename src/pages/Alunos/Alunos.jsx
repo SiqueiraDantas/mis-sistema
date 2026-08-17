@@ -3,7 +3,7 @@ import { supabase } from '../../services/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   Search, UserCheck, UserX, ChevronRight,
-  X, Save, AlertCircle, Users, SlidersHorizontal, Check, Trash2, ArrowDownUp
+  X, Save, AlertCircle, Users, SlidersHorizontal, Check, Trash2, ArrowDownUp, RefreshCw
 } from 'lucide-react'
 
 const OFICINAS = [
@@ -67,34 +67,15 @@ function normalizarProgramaSocial(valor) {
   return []
 }
 
-function extrairOficinasDoPeriodo(matriculasOficinas, periodoLetivo) {
+function extrairOficinasAnoAtual(matriculasOficinas) {
   const registros = Array.isArray(matriculasOficinas) ? matriculasOficinas : []
-
-  if (periodoLetivo) {
-    const oficinasPeriodo = registros
-      .filter(item => item?.periodo_letivo === periodoLetivo)
-      .map(item => item?.oficinas?.nome)
-      .filter(Boolean)
-
-    if (oficinasPeriodo.length > 0) {
-      return [...new Set(oficinasPeriodo)]
-    }
-
-    // Compatibilidade com registros antigos que ainda não possuam período.
-    const anoPeriodo = Number(String(periodoLetivo).split('.')[0])
-    const oficinasSemPeriodo = registros
-      .filter(item => !item?.periodo_letivo && Number(item?.ano_letivo) === anoPeriodo)
-      .map(item => item?.oficinas?.nome)
-      .filter(Boolean)
-
-    return [...new Set(oficinasSemPeriodo)]
-  }
-
-  const oficinas = registros
+  const oficinasAnoAtual = registros
+    .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
     .map(item => item?.oficinas?.nome)
     .filter(Boolean)
-
-  return [...new Set(oficinas)]
+  if (oficinasAnoAtual.length > 0) return [...new Set(oficinasAnoAtual)]
+  const fallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
+  return [...new Set(fallback)]
 }
 
 function tempoRelativo(dataStr) {
@@ -182,16 +163,17 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
       try {
         const { data, error } = await supabase
           .from('matriculas_oficinas')
-          .select(`ano_letivo, periodo_letivo, oficinas (nome)`)
+          .select(`ano_letivo, oficinas (nome)`)
           .eq('aluno_id', aluno.id)
         if (error) throw error
-
-        const periodoAluno = aluno.periodo_letivo || '2026.1'
-        const oficinasCarregadas = extrairOficinasDoPeriodo(data || [], periodoAluno)
-
-        if (ativo) {
-          setForm(f => ({ ...f, oficinas: oficinasCarregadas }))
-        }
+        const registros = data || []
+        const oficinasAnoAtual = registros
+          .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
+          .map(item => item?.oficinas?.nome)
+          .filter(Boolean)
+        const oficinasFallback = registros.map(item => item?.oficinas?.nome).filter(Boolean)
+        const oficinasCarregadas = oficinasAnoAtual.length > 0 ? oficinasAnoAtual : oficinasFallback
+        if (ativo) setForm(f => ({ ...f, oficinas: [...new Set(oficinasCarregadas)] }))
       } catch (e) {
         console.error('Erro ao carregar oficinas do aluno:', e)
       } finally {
@@ -200,7 +182,7 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
     }
     carregarOficinasAluno()
     return () => { ativo = false }
-  }, [aluno.id, aluno.periodo_letivo])
+  }, [aluno.id])
 
   async function salvar() {
     if (!form.nome.trim()) { setErro('Nome obrigatório'); return }
@@ -208,8 +190,6 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
     setErro('')
     try {
       const sexoMap = { Masculino: 'M', Feminino: 'F', Outro: 'Outro' }
-      const periodoAluno = aluno.periodo_letivo || '2026.1'
-      const anoAluno = Number(aluno.ano_letivo) || ANO_ATUAL
 
       const { error: errorAluno } = await supabase
         .from('alunos')
@@ -245,8 +225,7 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
             .from('matriculas_oficinas')
             .select('oficina_id')
             .eq('aluno_id', aluno.id)
-            .eq('ano_letivo', anoAluno)
-            .eq('periodo_letivo', periodoAluno)
+            .eq('ano_letivo', ANO_ATUAL)
 
           const idsExistentes = (jaMatriculado || []).map(m => m.oficina_id)
 
@@ -256,8 +235,7 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
             .map(oficina => ({
               aluno_id: aluno.id,
               oficina_id: oficina.id,
-              ano_letivo: anoAluno,
-              periodo_letivo: periodoAluno
+              ano_letivo: ANO_ATUAL
             }))
 
           if (novas.length > 0) {
@@ -297,9 +275,7 @@ function ModalEdicao({ aluno, onClose, onSalvo, onExcluir }) {
         <div className="flex items-center justify-between p-5 border-b border-mis-borda">
           <div>
             <h2 className="text-base font-bold text-mis-texto">Editar Aluno</h2>
-            <p className="text-xs text-mis-texto2 mt-0.5">
-              {aluno.numero_matricula} · {aluno.periodo_letivo || aluno.ano_letivo}
-            </p>
+            <p className="text-xs text-mis-texto2 mt-0.5">{aluno.numero_matricula}</p>
             {calcularIdade(aluno) !== null && (
               <span className="inline-block mt-1.5 bg-amarelo/15 border border-amarelo/40 text-amarelo text-xs font-bold px-2 py-0.5 rounded-full">
                 {calcularIdade(aluno)} anos
@@ -650,7 +626,6 @@ export default function Alunos() {
   const [alunos, setAlunos] = useState([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
-  const [filtroPeriodo, setFiltroPeriodo] = useState(PERIODO_PADRAO)
   const [filtroStatus, setFiltroStatus] = useState('ativo')
   const [filtroOficina, setFiltroOficina] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -661,6 +636,13 @@ export default function Alunos() {
   const [alunoExcluir, setAlunoExcluir] = useState(null)
   const [total, setTotal] = useState(0)
   const [excluindoId, setExcluindoId] = useState(null)
+  const [reenviandoWhatsApp, setReenviandoWhatsApp] = useState(false)
+  const [progressoWhatsApp, setProgressoWhatsApp] = useState({
+    atual: 0,
+    total: 0,
+    iniciados: 0,
+    erros: 0,
+  })
 
   const buscarAlunos = useCallback(async () => {
     setLoading(true)
@@ -673,15 +655,10 @@ export default function Alunos() {
           matriculas_oficinas (
             oficina_id,
             ano_letivo,
-            periodo_letivo,
             oficinas (nome)
           )
         `)
         .eq('ano_letivo', ANO_ATUAL)
-
-      if (filtroPeriodo) {
-        query = query.eq('periodo_letivo', filtroPeriodo)
-      }
 
       if (ordenacao === 'recentes') {
         query = query.order('created_at', { ascending: false })
@@ -700,10 +677,7 @@ export default function Alunos() {
 
       if (filtroOficina) {
         resultado = resultado.filter(aluno => {
-          const oficinas = extrairOficinasDoPeriodo(
-            aluno.matriculas_oficinas,
-            aluno.periodo_letivo || filtroPeriodo
-          )
+          const oficinas = extrairOficinasAnoAtual(aluno.matriculas_oficinas)
           return oficinas.includes(filtroOficina)
         })
       }
@@ -717,7 +691,7 @@ export default function Alunos() {
     } finally {
       setLoading(false)
     }
-  }, [busca, filtroPeriodo, filtroStatus, filtroOficina, filtroTipo, ordenacao])
+  }, [busca, filtroStatus, filtroOficina, filtroTipo, ordenacao])
 
   useEffect(() => {
     const t = setTimeout(buscarAlunos, 300)
@@ -753,8 +727,121 @@ export default function Alunos() {
     }
   }
 
+  async function reenviarWhatsAppFalhos() {
+    if (reenviandoWhatsApp) return
+
+    const confirmou = window.confirm(
+      `Deseja reenviar as mensagens de WhatsApp que falharam para os alunos do período ${PERIODO_PADRAO}?\n\n` +
+      'Será feito 1 envio por aluno, inclusive quando irmãos possuem o mesmo responsável.'
+    )
+
+    if (!confirmou) return
+
+    try {
+      const { data, error } = await supabase
+        .from('responsaveis')
+        .select(`
+          id,
+          aluno_id,
+          nome,
+          telefone,
+          whatsapp_status,
+          alunos!inner (
+            id,
+            nome,
+            periodo_letivo
+          )
+        `)
+        .eq('no_grupo_whatsapp', false)
+        .eq('whatsapp_status', 'falhou')
+        .eq('alunos.periodo_letivo', PERIODO_PADRAO)
+        .not('telefone', 'is', null)
+
+      if (error) throw error
+
+      const pendentes = (data || []).filter(item =>
+        item.aluno_id &&
+        item.telefone &&
+        String(item.telefone).trim()
+      )
+
+      if (pendentes.length === 0) {
+        window.alert(`Não há mensagens com falha para reenviar no período ${PERIODO_PADRAO}.`)
+        return
+      }
+
+      const confirmouQuantidade = window.confirm(
+        `Foram encontrados ${pendentes.length} envios com falha.\n\n` +
+        'Deseja iniciar o reenvio agora?\n\n' +
+        'O sistema fará um envio por vez, com intervalo de 5 segundos.'
+      )
+
+      if (!confirmouQuantidade) return
+
+      let iniciados = 0
+      let erros = 0
+
+      setReenviandoWhatsApp(true)
+      setProgressoWhatsApp({
+        atual: 0,
+        total: pendentes.length,
+        iniciados: 0,
+        erros: 0,
+      })
+
+      for (let i = 0; i < pendentes.length; i++) {
+        const item = pendentes[i]
+
+        setProgressoWhatsApp(prev => ({
+          ...prev,
+          atual: i + 1,
+        }))
+
+        try {
+          const { error: erroFuncao } = await supabase.functions.invoke(
+            'enviar-confirmacao-matricula',
+            {
+              body: { aluno_id: item.aluno_id }
+            }
+          )
+
+          if (erroFuncao) throw erroFuncao
+          iniciados++
+        } catch (erro) {
+          console.error(`Erro ao reenviar WhatsApp do aluno ${item.aluno_id}:`, erro)
+          erros++
+        }
+
+        setProgressoWhatsApp({
+          atual: i + 1,
+          total: pendentes.length,
+          iniciados,
+          erros,
+        })
+
+        if (i < pendentes.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 5000))
+        }
+      }
+
+      window.alert(
+        'Reenvio concluído!\n\n' +
+        `Total localizado: ${pendentes.length}\n` +
+        `Envios iniciados: ${iniciados}\n` +
+        `Erros ao iniciar: ${erros}`
+      )
+    } catch (erro) {
+      console.error('Erro no reenvio de WhatsApp:', erro)
+      window.alert(
+        'Não foi possível iniciar o reenvio.\n\n' +
+        (erro?.message || 'Erro desconhecido.')
+      )
+    } finally {
+      setReenviandoWhatsApp(false)
+    }
+  }
+
   function limparFiltros() {
-    setFiltroPeriodo(PERIODO_PADRAO)
     setFiltroStatus('ativo')
     setFiltroOficina('')
     setFiltroTipo('')
@@ -762,19 +849,67 @@ export default function Alunos() {
     setBusca('')
   }
 
-  const filtrosAtivos = filtroPeriodo !== PERIODO_PADRAO || filtroStatus !== 'ativo' || filtroOficina || filtroTipo || ordenacao !== 'nome'
+  const filtrosAtivos = filtroStatus !== 'ativo' || filtroOficina || filtroTipo || ordenacao !== 'nome'
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="page-title">Alunos</h1>
           <p className="text-mis-texto2 text-sm mt-1">
-            {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} ·{' '}
-            {filtroPeriodo || `Todos os períodos de ${ANO_ATUAL}`}
+            {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} · {ANO_ATUAL}
           </p>
         </div>
+
+        {isDiretor && (
+          <button
+            onClick={reenviarWhatsAppFalhos}
+            disabled={reenviandoWhatsApp}
+            className="btn-secondary flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Reenviar mensagens de WhatsApp que falharam"
+          >
+            <RefreshCw size={16} className={reenviandoWhatsApp ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">
+              {reenviandoWhatsApp
+                ? `Reenviando ${progressoWhatsApp.atual}/${progressoWhatsApp.total}`
+                : 'Reenviar WhatsApp'}
+            </span>
+          </button>
+        )}
       </div>
+
+      {reenviandoWhatsApp && progressoWhatsApp.total > 0 && (
+        <div className="mis-card mb-4 border-amarelo/30">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={15} className="text-amarelo animate-spin" />
+              <span className="text-sm font-semibold text-mis-texto">
+                Reenviando mensagens do WhatsApp
+              </span>
+            </div>
+
+            <span className="text-xs text-mis-texto2">
+              {progressoWhatsApp.atual} de {progressoWhatsApp.total}
+            </span>
+          </div>
+
+          <div className="w-full h-2 bg-mis-bg3 rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full bg-amarelo transition-all duration-300"
+              style={{
+                width: `${progressoWhatsApp.total
+                  ? (progressoWhatsApp.atual / progressoWhatsApp.total) * 100
+                  : 0}%`
+              }}
+            />
+          </div>
+
+          <div className="flex gap-4 text-xs">
+            <span className="text-verde">Iniciados: {progressoWhatsApp.iniciados}</span>
+            <span className="text-red-400">Erros: {progressoWhatsApp.erros}</span>
+          </div>
+        </div>
+      )}
 
       <div className="mis-card mb-4">
         <div className="flex gap-3">
@@ -810,19 +945,7 @@ export default function Alunos() {
         </div>
 
         {mostrarFiltros && (
-          <div className="mt-4 pt-4 border-t border-mis-borda grid grid-cols-1 md:grid-cols-4 gap-3 animate-fade-in">
-            <div>
-              <label className="mis-label">Período letivo</label>
-              <select
-                className="mis-input"
-                value={filtroPeriodo}
-                onChange={e => setFiltroPeriodo(e.target.value)}
-              >
-                <option value="2026.2">2026.2</option>
-                <option value="2026.1">2026.1</option>
-                <option value="">Todos os períodos</option>
-              </select>
-            </div>
+          <div className="mt-4 pt-4 border-t border-mis-borda grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in">
             <div>
               <label className="mis-label">Status</label>
               <select className="mis-input" value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
@@ -847,7 +970,7 @@ export default function Alunos() {
               </select>
             </div>
             {filtrosAtivos && (
-              <button onClick={limparFiltros} className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-4 w-fit">
+              <button onClick={limparFiltros} className="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5 md:col-span-3 w-fit">
                 <X size={12} />
                 Limpar filtros
               </button>
@@ -872,10 +995,7 @@ export default function Alunos() {
       ) : (
         <div className="space-y-2">
           {alunos.map(aluno => {
-            const oficinas = extrairOficinasDoPeriodo(
-              aluno.matriculas_oficinas,
-              aluno.periodo_letivo || filtroPeriodo
-            )
+            const oficinas = extrairOficinasAnoAtual(aluno.matriculas_oficinas)
             const responsavel = aluno.responsaveis?.[0]
             const idade = calcularIdade(aluno)
 
@@ -899,11 +1019,6 @@ export default function Alunos() {
                     <span className={`badge ${aluno.tipo === 'rematricula' ? 'badge-azul' : 'badge-gray'}`}>
                       {aluno.tipo}
                     </span>
-                    {!filtroPeriodo && (
-                      <span className="badge badge-gray">
-                        {aluno.periodo_letivo || aluno.ano_letivo}
-                      </span>
-                    )}
                   </div>
 
                   <div className="flex items-center gap-2 mt-0.5">
