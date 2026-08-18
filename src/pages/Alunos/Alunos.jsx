@@ -36,6 +36,7 @@ const BAIRROS = [
 const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
 const ANO_ATUAL = new Date().getFullYear()
 const PERIODO_PADRAO = '2026.2'
+const INTERVALO_REENVIO_MS = 60000
 
 function calcularIdade(aluno) {
   if (Number.isFinite(Number(aluno.idade)) && Number(aluno.idade) > 0) {
@@ -773,7 +774,7 @@ export default function Alunos() {
       const confirmouQuantidade = window.confirm(
         `Foram encontrados ${pendentes.length} envios com falha.\n\n` +
         'Deseja iniciar o reenvio agora?\n\n' +
-        'O sistema fará um envio por vez, com intervalo de 5 segundos.'
+        'O sistema fará um envio por vez, com intervalo de 1 minuto.'
       )
 
       if (!confirmouQuantidade) return
@@ -820,7 +821,7 @@ export default function Alunos() {
         })
 
         if (i < pendentes.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 5000))
+          await new Promise(resolve => setTimeout(resolve, INTERVALO_REENVIO_MS))
         }
       }
 
