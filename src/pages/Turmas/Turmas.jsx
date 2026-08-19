@@ -1,15 +1,73 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { jsPDF } from 'jspdf'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { usePeriodo } from '../../contexts/PeriodoContext'
-import { Plus, X, Save, Trash2, Users, BookOpen, ChevronRight, AlertCircle, Check, Search, Calendar } from 'lucide-react'
+import logoMadeInSertao from '../../assets/logo-madeinsertao.png'
+import { Plus, X, Save, Trash2, Users, BookOpen, ChevronRight, AlertCircle, Check, Search, Calendar, Download } from 'lucide-react'
 
 const OFICINAS = ['Flauta Doce','Clarinete','Trompete','Trombone','Saxofone','Trompa','Euphonio','Tuba','Percussão','Bateria','Flauta Transversal','Flauta Doce (Macaoca)','Violão (Macaoca)']
 const DIAS = ['Segunda','Terça','Quarta','Quinta','Sexta']
 const ANO_ATUAL = new Date().getFullYear()
+const PERIODO_PADRAO = '2026.2'
+const RODAPE_EXPORTACAO = [
+  'Associação Musical de Madalena - Made In Sertão - CNPJ 11.197.755/0001-44',
+  'Rua Alfredo Machado, 130B - Bairro São José - Madalena - Ceará - CEP: 63860-000',
+  '(85) 99286-0120 - madeinsertao.org@gmail.com',
+]
 
-function ModalTurma({ turma, professores, periodoLetivo, somenteLeitura, onClose, onSalvo }) {
+function obterDiasTurma(turma) {
+  return turma?.dias_semana?.length > 0
+    ? turma.dias_semana
+    : turma?.dia_semana
+      ? [turma.dia_semana]
+      : []
+}
+
+function formatarDiasTurma(turma) {
+  const dias = obterDiasTurma(turma)
+
+  if (dias.length === 0) return 'Dia não informado'
+  if (dias.length === 1) return dias[0]
+  if (dias.length === 2) return `${dias[0]} e ${dias[1]}`
+
+  return `${dias.slice(0, -1).join(', ')} e ${dias[dias.length - 1]}`
+}
+
+function formatarHoraTurma(horario) {
+  if (!horario) return 'Horário não informado'
+
+  const [hora = '00', minuto = '00'] = horario.slice(0, 5).split(':')
+  return minuto === '00' ? `${hora}h` : `${hora}h${minuto}`
+}
+
+function formatarTituloTurmaExportacao(turma) {
+  const nomeTurma = (turma?.nome || turma?.oficinas?.nome || 'Turma').toUpperCase()
+  return `${nomeTurma} (${formatarDiasTurma(turma)} - ${formatarHoraTurma(turma?.horario_inicio)})`
+}
+
+function normalizarNomeArquivo(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+async function carregarImagemComoDataUrl(src) {
+  const resposta = await fetch(src)
+  const blob = await resposta.blob()
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+function ModalTurma({ turma, professores, onClose, onSalvo }) {
   const editando = !!turma
   const diasAtuais = turma?.dias_semana?.length > 0 ? turma.dias_semana : turma?.dia_semana ? [turma.dia_semana] : []
   const [form, setForm] = useState({
@@ -47,11 +105,6 @@ function ModalTurma({ turma, professores, periodoLetivo, somenteLeitura, onClose
   }
 
   async function salvar() {
-    if (somenteLeitura) {
-      setErro('O período histórico está disponível somente para consulta.')
-      return
-    }
-
     if (!form.nome.trim()) {
       setErro('Nome da turma obrigatório')
       return
@@ -85,19 +138,8 @@ function ModalTurma({ turma, professores, periodoLetivo, somenteLeitura, onClose
       }
 
       const { error } = editando
-        ? await supabase
-            .from('turmas')
-            .update(payload)
-            .eq('id', turma.id)
-            .eq('periodo_letivo', periodoLetivo)
-        : await supabase
-            .from('turmas')
-            .insert({
-              ...payload,
-              ano_letivo: ANO_ATUAL,
-              periodo_letivo: periodoLetivo,
-              ativa: true,
-            })
+        ? await supabase.from('turmas').update(payload).eq('id', turma.id)
+        : await supabase.from('turmas').insert({ ...payload, ano_letivo: ANO_ATUAL, ativa: true })
 
       if (error) throw error
       onSalvo()
@@ -226,7 +268,7 @@ function ModalTurma({ turma, professores, periodoLetivo, somenteLeitura, onClose
   )
 }
 
-function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
+function ModalAlunos({ turma, onClose }) {
   const [alunosTurma, setAlunosTurma] = useState([])
   const [todosAlunos, setTodosAlunos] = useState([])
   const [busca, setBusca] = useState('')
@@ -243,7 +285,6 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
           .from('frequencias')
           .select('aluno_id')
           .eq('turma_id', turma.id)
-          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null),
 
         supabase
@@ -254,12 +295,11 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
             numero_matricula,
             matriculas_oficinas (
               ano_letivo,
-              periodo_letivo,
               oficinas (nome)
             )
           `)
           .eq('status', 'ativo')
-          .eq('periodo_letivo', periodoLetivo)
+          .eq('ano_letivo', ANO_ATUAL)
           .order('nome')
       ])
 
@@ -276,11 +316,9 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
 
   useEffect(() => {
     carregar()
-  }, [turma.id, periodoLetivo])
+  }, [])
 
   async function toggleAluno(alunoId) {
-    if (somenteLeitura) return
-
     setSalvando(alunoId)
 
     try {
@@ -292,7 +330,6 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
           .delete()
           .eq('turma_id', turma.id)
           .eq('aluno_id', alunoId)
-          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null)
 
         setAlunosTurma(prev => prev.filter(x => x !== alunoId))
@@ -302,7 +339,6 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
           .select('id')
           .eq('turma_id', turma.id)
           .eq('aluno_id', alunoId)
-          .eq('periodo_letivo', periodoLetivo)
           .is('data_aula', null)
           .maybeSingle()
 
@@ -313,8 +349,7 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
               turma_id: turma.id,
               aluno_id: alunoId,
               data_aula: null,
-              status: 'presente',
-              periodo_letivo: periodoLetivo,
+              status: 'presente'
             })
 
           if (error) throw error
@@ -333,12 +368,16 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
     const nomeOk = aluno.nome.toLowerCase().includes(busca.toLowerCase())
 
     const oficinasAluno = (aluno.matriculas_oficinas || [])
-      .filter(item => item?.periodo_letivo === periodoLetivo)
+      .filter(item => Number(item?.ano_letivo) === ANO_ATUAL)
       .map(item => item?.oficinas?.nome)
       .filter(Boolean)
 
-    const oficinaOk =
-      !filtroOficina || oficinasAluno.includes(filtroOficina)
+    const oficinasFallback = (aluno.matriculas_oficinas || [])
+      .map(item => item?.oficinas?.nome)
+      .filter(Boolean)
+
+    const listaOficinas = oficinasAluno.length > 0 ? oficinasAluno : oficinasFallback
+    const oficinaOk = !filtroOficina || listaOficinas.includes(filtroOficina)
 
     return nomeOk && oficinaOk
   })
@@ -398,7 +437,7 @@ function ModalAlunos({ turma, periodoLetivo, somenteLeitura, onClose }) {
                     <button
                       key={aluno.id}
                       onClick={() => toggleAluno(aluno.id)}
-                      disabled={somenteLeitura || salvando === aluno.id}
+                      disabled={salvando === aluno.id}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left
                         ${vinculado
                           ? 'bg-amarelo/10 border-amarelo/40'
@@ -477,7 +516,295 @@ function ModalExcluir({ turma, onClose, onConfirmar }) {
   )
 }
 
-function GradeSemanal({ turmas, periodoLetivo, onClose }) {
+function ModalExportarListas({ turmas, turmasFiltradas, onClose }) {
+  const [modoExportacao, setModoExportacao] = useState('todas')
+  const [turmaId, setTurmaId] = useState(turmas[0]?.id || '')
+  const [gerando, setGerando] = useState(false)
+  const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    if (!turmas.some(turma => turma.id === turmaId)) {
+      setTurmaId(turmas[0]?.id || '')
+    }
+  }, [turmas, turmaId])
+
+  const turmasSelecionadas = modoExportacao === 'filtradas'
+    ? turmasFiltradas
+    : modoExportacao === 'turma'
+      ? turmas.filter(turma => turma.id === turmaId)
+      : turmas
+
+  async function exportarPdf() {
+    if (gerando) return
+
+    if (turmasSelecionadas.length === 0) {
+      setErro('Nenhuma turma disponível para exportar.')
+      return
+    }
+
+    setGerando(true)
+    setErro('')
+
+    try {
+      const turmaIds = turmasSelecionadas.map(turma => turma.id)
+      const { data, error } = await supabase
+        .from('frequencias')
+        .select(`
+          turma_id,
+          aluno_id,
+          alunos (
+            id,
+            nome,
+            status,
+            periodo_letivo
+          )
+        `)
+        .in('turma_id', turmaIds)
+        .is('data_aula', null)
+
+      if (error) throw error
+
+      const alunosPorTurma = new Map(turmaIds.map(id => [id, new Map()]))
+
+      for (const item of data || []) {
+        const aluno = Array.isArray(item?.alunos) ? item.alunos[0] : item?.alunos
+        const nomeAluno = aluno?.nome?.trim()
+
+        if (!item?.turma_id || !item?.aluno_id || !nomeAluno) continue
+        if (aluno?.status !== 'ativo' || aluno?.periodo_letivo !== PERIODO_PADRAO) continue
+
+        if (!alunosPorTurma.has(item.turma_id)) {
+          alunosPorTurma.set(item.turma_id, new Map())
+        }
+
+        alunosPorTurma.get(item.turma_id).set(item.aluno_id, nomeAluno)
+      }
+
+      const logoDataUrl = await carregarImagemComoDataUrl(logoMadeInSertao).catch(() => null)
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const larguraPagina = doc.internal.pageSize.getWidth()
+      const alturaPagina = doc.internal.pageSize.getHeight()
+      const centroX = larguraPagina / 2
+      const larguraTitulo = 150
+      const margemLista = 28
+      const inicioConteudo = 38
+      const limiteConteudo = alturaPagina - 34
+      let y = inicioConteudo
+      let numeroPagina = 0
+
+      function desenharCabecalho() {
+        if (logoDataUrl) {
+          doc.addImage(logoDataUrl, 'PNG', 16, 10, 14, 14)
+        }
+
+        doc.setDrawColor(30, 30, 30)
+        doc.setTextColor(20, 20, 20)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(12)
+        doc.text('ESCOLA DE MÚSICA DE MADALENA', 34, 17)
+        doc.setLineWidth(0.4)
+        doc.line(34, 19.5, 124, 19.5)
+      }
+
+      function desenharRodape() {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(90, 90, 90)
+
+        RODAPE_EXPORTACAO.forEach((linha, index) => {
+          doc.text(linha, centroX, alturaPagina - 18 + (index * 4), { align: 'center' })
+        })
+      }
+
+      function abrirPagina() {
+        if (numeroPagina > 0) {
+          doc.addPage()
+        }
+
+        numeroPagina += 1
+        desenharCabecalho()
+        desenharRodape()
+        y = inicioConteudo
+      }
+
+      function escreverTituloTurma(titulo) {
+        const linhas = doc.splitTextToSize(titulo, larguraTitulo)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(11)
+        doc.setTextColor(30, 30, 30)
+        doc.text(linhas, centroX, y, { align: 'center' })
+        y += (linhas.length * 5) + 2
+        doc.setDrawColor(205, 205, 205)
+        doc.setLineWidth(0.3)
+        doc.line(36, y, larguraPagina - 36, y)
+        y += 5
+      }
+
+      abrirPagina()
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(13)
+      doc.setTextColor(20, 20, 20)
+      doc.text(`INSCRITOS PARA OS CURSOS - PERÍODO ${PERIODO_PADRAO}`, centroX, y + 2, { align: 'center' })
+      y += 14
+
+      for (const turma of turmasSelecionadas) {
+        const nomes = [...(alunosPorTurma.get(turma.id)?.values() || [])]
+          .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        const tituloTurma = formatarTituloTurmaExportacao(turma)
+        const lista = nomes.length > 0 ? nomes : ['Nenhum aluno vinculado nesta turma.']
+        const alturaPrevista = 12 + (lista.length * 5)
+
+        if (y + alturaPrevista > limiteConteudo) {
+          abrirPagina()
+        }
+
+        escreverTituloTurma(tituloTurma)
+
+        for (const [index, nome] of lista.entries()) {
+          const textoLinha = nomes.length > 0 ? `- ${nome}` : nome
+          const linhas = doc.splitTextToSize(textoLinha, 150)
+
+          if (y + (linhas.length * 5) > limiteConteudo) {
+            abrirPagina()
+            escreverTituloTurma(`${tituloTurma} (continuação)`)
+          }
+
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(10)
+          doc.setTextColor(nomes.length > 0 ? 35 : 110, nomes.length > 0 ? 35 : 110, nomes.length > 0 ? 35 : 110)
+          doc.text(linhas, margemLista, y)
+          y += linhas.length * 5
+
+          if (index === lista.length - 1) {
+            y += 6
+          }
+        }
+      }
+
+      const nomeArquivo = modoExportacao === 'turma' && turmasSelecionadas[0]
+        ? `lista-${normalizarNomeArquivo(turmasSelecionadas[0].nome)}-${PERIODO_PADRAO}.pdf`
+        : `listas-turmas-${PERIODO_PADRAO}.pdf`
+
+      doc.save(nomeArquivo)
+      onClose()
+    } catch (e) {
+      console.error('Erro ao exportar listas das turmas:', e)
+      setErro(e?.message || 'Não foi possível gerar o PDF agora.')
+    } finally {
+      setGerando(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/70 z-[9999] overflow-y-auto">
+      <div className="min-h-full flex items-start justify-center p-3 py-6">
+        <div className="w-full max-w-xl bg-mis-bg2 border border-mis-borda rounded-xl2 animate-fade-in">
+          <div className="flex items-center justify-between p-4 border-b border-mis-borda">
+            <div>
+              <h2 className="text-sm font-bold text-mis-texto">Exportar Lista de Alunos</h2>
+              <p className="text-xs text-mis-texto2 mt-0.5">
+                Gere um PDF no modelo das turmas do período {PERIODO_PADRAO}.
+              </p>
+            </div>
+
+            <button onClick={onClose} className="text-mis-texto2 hover:text-mis-texto p-1">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => setModoExportacao('todas')}
+              className={`w-full text-left rounded-xl border px-4 py-3 transition-all ${
+                modoExportacao === 'todas'
+                  ? 'border-amarelo bg-amarelo/10'
+                  : 'border-mis-borda bg-mis-bg3 hover:border-amarelo/30'
+              }`}
+            >
+              <p className="text-sm font-semibold text-mis-texto">Exportar geral</p>
+              <p className="text-xs text-mis-texto2 mt-1">
+                Inclui todas as {turmas.length} turma{turmas.length !== 1 ? 's' : ''} cadastradas em {ANO_ATUAL}.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setModoExportacao('filtradas')}
+              className={`w-full text-left rounded-xl border px-4 py-3 transition-all ${
+                modoExportacao === 'filtradas'
+                  ? 'border-amarelo bg-amarelo/10'
+                  : 'border-mis-borda bg-mis-bg3 hover:border-amarelo/30'
+              }`}
+            >
+              <p className="text-sm font-semibold text-mis-texto">Exportar turmas da tela</p>
+              <p className="text-xs text-mis-texto2 mt-1">
+                Usa exatamente as {turmasFiltradas.length} turma{turmasFiltradas.length !== 1 ? 's' : ''} que estão aparecendo agora.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setModoExportacao('turma')}
+              className={`w-full text-left rounded-xl border px-4 py-3 transition-all ${
+                modoExportacao === 'turma'
+                  ? 'border-amarelo bg-amarelo/10'
+                  : 'border-mis-borda bg-mis-bg3 hover:border-amarelo/30'
+              }`}
+            >
+              <p className="text-sm font-semibold text-mis-texto">Exportar uma turma específica</p>
+              <p className="text-xs text-mis-texto2 mt-1">
+                Escolha uma única turma para baixar a lista separada.
+              </p>
+            </button>
+
+            {modoExportacao === 'turma' && (
+              <div>
+                <label className="mis-label">Turma</label>
+                <select
+                  className="mis-input text-sm"
+                  value={turmaId}
+                  onChange={e => setTurmaId(e.target.value)}
+                >
+                  {turmas.map(turma => (
+                    <option key={turma.id} value={turma.id}>
+                      {turma.nome} · {formatarDiasTurma(turma)} · {turma.horario_inicio?.slice(0, 5)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {erro && (
+              <div className="bg-red-900/30 border border-red-800 text-red-400 text-xs rounded-lg px-3 py-2 flex items-center gap-2">
+                <AlertCircle size={13} /> {erro}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 p-4 border-t border-mis-borda">
+            <button onClick={onClose} disabled={gerando} className="btn-secondary px-4 py-2 text-sm">
+              Cancelar
+            </button>
+            <button
+              onClick={exportarPdf}
+              disabled={gerando}
+              className="btn-primary flex-1 flex items-center justify-center gap-2 py-2 text-sm"
+            >
+              {gerando
+                ? <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                : <><Download size={14} /> Exportar PDF</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function GradeSemanal({ turmas, onClose }) {
   const horarios = [...new Set(turmas.map(t => t.horario_inicio))].sort()
 
   return createPortal(
@@ -488,7 +815,7 @@ function GradeSemanal({ turmas, periodoLetivo, onClose }) {
             <div>
               <h2 className="text-sm font-bold text-mis-texto">Grade Semanal</h2>
               <p className="text-xs text-mis-texto2 mt-0.5">
-                {periodoLetivo} · {turmas.length} turma{turmas.length !== 1 ? 's' : ''}
+                {ANO_ATUAL} · {turmas.length} turma{turmas.length !== 1 ? 's' : ''}
               </p>
             </div>
             <button onClick={onClose} className="text-mis-texto2 hover:text-mis-texto p-1">
@@ -559,7 +886,6 @@ function GradeSemanal({ turmas, periodoLetivo, onClose }) {
 
 export default function Turmas() {
   const { isDiretor } = useAuth()
-  const { periodoLetivo, somenteLeitura } = usePeriodo()
   const [turmas, setTurmas] = useState([])
   const [professores, setProfessores] = useState([])
   const [loading, setLoading] = useState(true)
@@ -570,6 +896,7 @@ export default function Turmas() {
   const [turmaExcluir, setTurmaExcluir] = useState(null)
   const [turmaAlunos, setTurmaAlunos] = useState(null)
   const [mostrarGrade, setMostrarGrade] = useState(false)
+  const [mostrarExportacao, setMostrarExportacao] = useState(false)
 
   const buscarDados = useCallback(async () => {
     setLoading(true)
@@ -578,8 +905,8 @@ export default function Turmas() {
       const [{ data: t, error: e1 }, { data: p }] = await Promise.all([
         supabase
           .from('turmas')
-          .select('id, nome, dia_semana, dias_semana, horario_inicio, horario_fim, vagas, ativa, ano_letivo, periodo_letivo, oficina_id, professor_id, oficinas(id,nome), profiles(id,nome)')
-          .eq('periodo_letivo', periodoLetivo)
+          .select('id, nome, dia_semana, dias_semana, horario_inicio, horario_fim, vagas, ativa, ano_letivo, oficina_id, professor_id, oficinas(id,nome), profiles(id,nome)')
+          .eq('ano_letivo', ANO_ATUAL)
           .order('horario_inicio'),
 
         supabase
@@ -598,33 +925,21 @@ export default function Turmas() {
     } finally {
       setLoading(false)
     }
-  }, [periodoLetivo])
+  }, [])
 
   useEffect(() => {
     buscarDados()
   }, [buscarDados])
 
   async function excluirTurma(turma) {
-    if (somenteLeitura) return
-
-    await supabase
-      .from('frequencias')
-      .delete()
-      .eq('turma_id', turma.id)
-      .eq('periodo_letivo', periodoLetivo)
-
-    await supabase
-      .from('turmas')
-      .delete()
-      .eq('id', turma.id)
-      .eq('periodo_letivo', periodoLetivo)
-
+    await supabase.from('frequencias').delete().eq('turma_id', turma.id)
+    await supabase.from('turmas').delete().eq('id', turma.id)
     setTurmaExcluir(null)
     buscarDados()
   }
 
   const turmasFiltradas = turmas.filter(t => {
-    const dias = t.dias_semana?.length > 0 ? t.dias_semana : t.dia_semana ? [t.dia_semana] : []
+    const dias = obterDiasTurma(t)
 
     if (filtroDia && !dias.includes(filtroDia)) return false
     if (filtroOficina && t.oficinas?.nome !== filtroOficina) return false
@@ -638,11 +953,19 @@ export default function Turmas() {
         <div>
           <h1 className="page-title">Turmas</h1>
           <p className="text-mis-texto2 text-sm mt-1">
-            {turmas.length} turma{turmas.length !== 1 ? 's' : ''} · {periodoLetivo}
+            {turmas.length} turma{turmas.length !== 1 ? 's' : ''} · {ANO_ATUAL}
           </p>
         </div>
 
         <div className="flex flex-col gap-2 flex-shrink-0">
+          <button
+            onClick={() => setMostrarExportacao(true)}
+            disabled={loading || turmas.length === 0}
+            className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={14} /> Exportar Lista
+          </button>
+
           <button
             onClick={() => setMostrarGrade(true)}
             className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
@@ -650,7 +973,7 @@ export default function Turmas() {
             <Calendar size={14} /> Grade Semanal
           </button>
 
-          {isDiretor && !somenteLeitura && (
+          {isDiretor && (
             <button
               onClick={() => setModalNova(true)}
               className="btn-primary flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
@@ -660,18 +983,6 @@ export default function Turmas() {
           )}
         </div>
       </div>
-
-      {somenteLeitura && (
-        <div className="mb-4 bg-amarelo/10 border border-amarelo/30 rounded-xl px-4 py-3">
-          <p className="text-sm font-semibold text-amarelo">
-            Período histórico: {periodoLetivo}
-          </p>
-          <p className="text-xs text-mis-texto2 mt-1">
-            As turmas podem ser consultadas, mas não podem ser criadas,
-            alteradas, excluídas ou receber novos alunos.
-          </p>
-        </div>
-      )}
 
       <div className="mis-card mb-4">
         <div className="grid grid-cols-2 gap-3">
@@ -708,7 +1019,7 @@ export default function Turmas() {
         <div className="mis-card flex flex-col items-center justify-center py-16 text-center">
           <BookOpen size={36} className="text-mis-borda mb-3" />
           <p className="text-mis-texto font-semibold mb-1">Nenhuma turma encontrada</p>
-          {isDiretor && !somenteLeitura && (
+          {isDiretor && (
             <button onClick={() => setModalNova(true)} className="btn-primary mt-3 flex items-center gap-2 px-4 py-2 text-sm">
               <Plus size={14} /> Criar primeira turma
             </button>
@@ -717,7 +1028,7 @@ export default function Turmas() {
       ) : (
         <div className="space-y-2">
           {turmasFiltradas.map(turma => {
-            const dias = turma.dias_semana?.length > 0 ? turma.dias_semana : turma.dia_semana ? [turma.dia_semana] : []
+            const dias = obterDiasTurma(turma)
 
             return (
               <div key={turma.id} className="mis-card hover:border-mis-texto/20 transition-all">
@@ -749,7 +1060,7 @@ export default function Turmas() {
                       <Users size={14} />
                     </button>
 
-                    {isDiretor && !somenteLeitura && (
+                    {isDiretor && (
                       <>
                         <button
                           onClick={() => setTurmaEditar(turma)}
@@ -776,12 +1087,10 @@ export default function Turmas() {
         </div>
       )}
 
-      {!somenteLeitura && (modalNova || turmaEditar) && (
+      {(modalNova || turmaEditar) && (
         <ModalTurma
           turma={turmaEditar}
           professores={professores}
-          periodoLetivo={periodoLetivo}
-          somenteLeitura={somenteLeitura}
           onClose={() => {
             setModalNova(false)
             setTurmaEditar(null)
@@ -794,7 +1103,7 @@ export default function Turmas() {
         />
       )}
 
-      {!somenteLeitura && turmaExcluir && (
+      {turmaExcluir && (
         <ModalExcluir
           turma={turmaExcluir}
           onClose={() => setTurmaExcluir(null)}
@@ -805,8 +1114,6 @@ export default function Turmas() {
       {turmaAlunos && (
         <ModalAlunos
           turma={turmaAlunos}
-          periodoLetivo={periodoLetivo}
-          somenteLeitura={somenteLeitura}
           onClose={() => {
             setTurmaAlunos(null)
             buscarDados()
@@ -815,7 +1122,15 @@ export default function Turmas() {
       )}
 
       {mostrarGrade && (
-        <GradeSemanal turmas={turmas} periodoLetivo={periodoLetivo} onClose={() => setMostrarGrade(false)} />
+        <GradeSemanal turmas={turmas} onClose={() => setMostrarGrade(false)} />
+      )}
+
+      {mostrarExportacao && (
+        <ModalExportarListas
+          turmas={turmas}
+          turmasFiltradas={turmasFiltradas}
+          onClose={() => setMostrarExportacao(false)}
+        />
       )}
     </div>
   )
