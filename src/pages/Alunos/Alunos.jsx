@@ -653,6 +653,11 @@ export default function Alunos() {
         .select(`
           *,
           responsaveis (id, nome, telefone, email),
+      let query = supabase
+        .from('alunos')
+        .select(`
+          *,
+          responsaveis (id, nome, telefone, email),
           matriculas_oficinas (
             oficina_id,
             ano_letivo,
@@ -660,6 +665,10 @@ export default function Alunos() {
           )
         `)
         .eq('ano_letivo', ANO_ATUAL)
+          )
+        `)
+        .eq('ano_letivo', ANO_ATUAL)
+        .eq('periodo_letivo', PERIODO_PADRAO)
 
       if (ordenacao === 'recentes') {
         query = query.order('created_at', { ascending: false })
@@ -774,6 +783,7 @@ export default function Alunos() {
       const confirmouQuantidade = window.confirm(
         `Foram encontrados ${pendentes.length} envios com falha.\n\n` +
         'Deseja iniciar o reenvio agora?\n\n' +
+        'O sistema fará um envio por vez, com intervalo de 5 segundos.'
         'O sistema fará um envio por vez, com intervalo de 1 minuto.'
       )
 
@@ -821,6 +831,7 @@ export default function Alunos() {
         })
 
         if (i < pendentes.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 5000))
           await new Promise(resolve => setTimeout(resolve, INTERVALO_REENVIO_MS))
         }
       }
@@ -859,6 +870,7 @@ export default function Alunos() {
           <h1 className="page-title">Alunos</h1>
           <p className="text-mis-texto2 text-sm mt-1">
             {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} · {ANO_ATUAL}
+            {total} aluno{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''} · {PERIODO_PADRAO}
           </p>
         </div>
 
