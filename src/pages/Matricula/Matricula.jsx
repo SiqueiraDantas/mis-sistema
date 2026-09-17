@@ -9,12 +9,23 @@ import {
   User,
   Guitar,
   Users,
+  CalendarDays,
 } from 'lucide-react'
 
 const OFICINAS = [
-  'Flauta Doce', 'Clarinete', 'Trompete', 'Trombone', 'Saxofone',
-  'Trompa', 'Euphonio', 'Tuba', 'Percussão', 'Bateria',
-  'Flauta Transversal', 'Flauta Doce (Macaoca)', 'Violão (Macaoca)',
+  'Flauta Doce',
+  'Clarinete',
+  'Trompete',
+  'Trombone',
+  'Saxofone',
+  'Trompa',
+  'Euphonio',
+  'Tuba',
+  'Percussão',
+  'Bateria',
+  'Flauta Transversal',
+  'Flauta Doce (Macaoca)',
+  'Violão (Macaoca)',
 ]
 
 const ESCOLAS = [
@@ -65,7 +76,33 @@ const BAIRROS = [
   'Paus Branco',
 ]
 
-const PROGRAMAS_SOCIAIS = ['Bolsa Família', 'Pé-de-Meia', 'Cesta Básica', 'Nenhum']
+const PROGRAMAS_SOCIAIS = [
+  'Bolsa Família',
+  'Pé-de-Meia',
+  'Cesta Básica',
+  'Nenhum',
+]
+
+const MESES_NASCIMENTO = [
+  { valor: '01', nome: 'Janeiro' },
+  { valor: '02', nome: 'Fevereiro' },
+  { valor: '03', nome: 'Março' },
+  { valor: '04', nome: 'Abril' },
+  { valor: '05', nome: 'Maio' },
+  { valor: '06', nome: 'Junho' },
+  { valor: '07', nome: 'Julho' },
+  { valor: '08', nome: 'Agosto' },
+  { valor: '09', nome: 'Setembro' },
+  { valor: '10', nome: 'Outubro' },
+  { valor: '11', nome: 'Novembro' },
+  { valor: '12', nome: 'Dezembro' },
+]
+
+const DIAS_NASCIMENTO = Array.from(
+  { length: 31 },
+  (_, i) => i + 1
+)
+
 const ANO_ATUAL = new Date().getFullYear()
 const PERIODO_LETIVO = '2026.2'
 const VERSAO_TERMO_IMAGEM = '2026.2-v1'
@@ -81,8 +118,10 @@ function normalizarCpf(valor = '') {
 function normalizarTelefone(valor = '') {
   let telefone = somenteDigitos(valor)
 
-  // Remove o código do Brasil quando informado: +55 / 55
-  if (telefone.startsWith('55') && (telefone.length === 12 || telefone.length === 13)) {
+  if (
+    telefone.startsWith('55') &&
+    (telefone.length === 12 || telefone.length === 13)
+  ) {
     telefone = telefone.slice(2)
   }
 
@@ -92,7 +131,12 @@ function normalizarTelefone(valor = '') {
 function cpfValido(valor = '') {
   const cpf = normalizarCpf(valor)
 
-  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false
+  if (
+    cpf.length !== 11 ||
+    /^(\d)\1{10}$/.test(cpf)
+  ) {
+    return false
+  }
 
   const calcularDigito = tamanho => {
     let soma = 0
@@ -102,97 +146,280 @@ function cpfValido(valor = '') {
     }
 
     const resto = (soma * 10) % 11
+
     return resto === 10 ? 0 : resto
   }
 
-  return calcularDigito(9) === Number(cpf[9])
-    && calcularDigito(10) === Number(cpf[10])
+  return (
+    calcularDigito(9) === Number(cpf[9]) &&
+    calcularDigito(10) === Number(cpf[10])
+  )
 }
 
 function telefoneValido(valor = '') {
   const telefone = normalizarTelefone(valor)
-  return telefone.length === 10 || telefone.length === 11
+
+  return (
+    telefone.length === 10 ||
+    telefone.length === 11
+  )
 }
 
 function emailValido(valor = '') {
   if (!valor.trim()) return true
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim())
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    valor.trim()
+  )
+}
+
+function montarDataNascimento(
+  dia = '',
+  mes = '',
+  ano = ''
+) {
+  if (!dia || !mes || !ano) {
+    return ''
+  }
+
+  const numeroDia = Number(dia)
+  const numeroMes = Number(mes)
+  const numeroAno = Number(ano)
+
+  if (
+    !numeroDia ||
+    !numeroMes ||
+    !numeroAno
+  ) {
+    return ''
+  }
+
+  const data = new Date(
+    numeroAno,
+    numeroMes - 1,
+    numeroDia
+  )
+
+  const dataValida =
+    data.getFullYear() === numeroAno &&
+    data.getMonth() === numeroMes - 1 &&
+    data.getDate() === numeroDia
+
+  if (!dataValida) {
+    return ''
+  }
+
+  return `${numeroAno}-${String(numeroMes).padStart(2, '0')}-${String(numeroDia).padStart(2, '0')}`
+}
+
+function calcularIdade(dataNascimento = '') {
+  if (!dataNascimento) {
+    return null
+  }
+
+  const [ano, mes, dia] =
+    dataNascimento
+      .split('-')
+      .map(Number)
+
+  if (!ano || !mes || !dia) {
+    return null
+  }
+
+  const hoje = new Date()
+
+  let idade =
+    hoje.getFullYear() - ano
+
+  const aindaNaoFezAniversario =
+    hoje.getMonth() + 1 < mes ||
+    (
+      hoje.getMonth() + 1 === mes &&
+      hoje.getDate() < dia
+    )
+
+  if (aindaNaoFezAniversario) {
+    idade -= 1
+  }
+
+  return idade
+}
+
+function formatarData(data = '') {
+  if (!data) {
+    return '—'
+  }
+
+  const [ano, mes, dia] =
+    data.split('-')
+
+  if (!ano || !mes || !dia) {
+    return data
+  }
+
+  return `${dia}/${mes}/${ano}`
 }
 
 function StepIndicator({ step, total }) {
   return (
     <div className="flex items-center justify-center gap-2 mb-8">
-      {Array.from({ length: total }).map((_, i) => (
-        <div key={i} className="flex items-center gap-2">
+      {Array.from({ length: total }).map(
+        (_, i) => (
           <div
-            className={`
-              w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all
-              ${i + 1 < step
-                ? 'bg-verde text-white'
-                : i + 1 === step
-                  ? 'bg-amarelo text-black'
-                  : 'bg-mis-bg3 text-mis-texto2 border border-mis-borda'}
-            `}
+            key={i}
+            className="flex items-center gap-2"
           >
-            {i + 1 < step ? <Check size={14} /> : i + 1}
+            <div
+              className={`
+                w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all
+                ${
+                  i + 1 < step
+                    ? 'bg-verde text-white'
+                    : i + 1 === step
+                      ? 'bg-amarelo text-black'
+                      : 'bg-mis-bg3 text-mis-texto2 border border-mis-borda'
+                }
+              `}
+            >
+              {i + 1 < step
+                ? <Check size={14} />
+                : i + 1
+              }
+            </div>
+
+            {i < total - 1 && (
+              <div
+                className={`w-8 h-0.5 ${
+                  i + 1 < step
+                    ? 'bg-verde'
+                    : 'bg-mis-borda'
+                }`}
+              />
+            )}
           </div>
-          {i < total - 1 && (
-            <div className={`w-8 h-0.5 ${i + 1 < step ? 'bg-verde' : 'bg-mis-borda'}`} />
-          )}
-        </div>
-      ))}
+        )
+      )}
     </div>
   )
 }
 
-function Label({ children, required }) {
+function Label({
+  children,
+  required,
+}) {
   return (
     <label className="block text-xs font-semibold uppercase tracking-widest text-mis-texto2 mb-1.5">
-      {children} {required && <span className="text-amarelo">*</span>}
+      {children}
+
+      {required && (
+        <span className="text-amarelo">
+          {' '}*
+        </span>
+      )}
     </label>
   )
 }
 
-function Input({ label, required, error, ...props }) {
+function Input({
+  label,
+  required,
+  error,
+  ...props
+}) {
   return (
     <div>
-      {label && <Label required={required}>{label}</Label>}
+      {label && (
+        <Label required={required}>
+          {label}
+        </Label>
+      )}
+
       <input
-        className={`w-full bg-mis-bg3 border ${error ? 'border-red-500' : 'border-mis-borda'} text-mis-texto rounded-lg px-3 py-2.5 text-sm font-poppins outline-none transition-colors focus:border-amarelo placeholder:text-mis-texto2`}
+        className={`w-full bg-mis-bg3 border ${
+          error
+            ? 'border-red-500'
+            : 'border-mis-borda'
+        } text-mis-texto rounded-lg px-3 py-2.5 text-sm font-poppins outline-none transition-colors focus:border-amarelo placeholder:text-mis-texto2`}
         {...props}
       />
-      {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+
+      {error && (
+        <p className="text-red-400 text-xs mt-1">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
 
-function Select({ label, required, error, children, ...props }) {
+function Select({
+  label,
+  required,
+  error,
+  children,
+  ...props
+}) {
   return (
     <div>
-      {label && <Label required={required}>{label}</Label>}
+      {label && (
+        <Label required={required}>
+          {label}
+        </Label>
+      )}
+
       <select
-        className={`w-full bg-mis-bg3 border ${error ? 'border-red-500' : 'border-mis-borda'} text-mis-texto rounded-lg px-3 py-2.5 text-sm font-poppins outline-none transition-colors focus:border-amarelo`}
+        className={`w-full bg-mis-bg3 border ${
+          error
+            ? 'border-red-500'
+            : 'border-mis-borda'
+        } text-mis-texto rounded-lg px-3 py-2.5 text-sm font-poppins outline-none transition-colors focus:border-amarelo`}
         {...props}
       >
         {children}
       </select>
-      {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+
+      {error && (
+        <p className="text-red-400 text-xs mt-1">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
 
 export default function Matricula() {
-  const [step, setStep] = useState(1)
-  const [enviado, setEnviado] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [erroGeral, setErroGeral] = useState('')
-  const [numeroMatricula, setNumeroMatricula] = useState('')
-  const [erros, setErros] = useState({})
-  const [aceitouTermos, setAceitouTermos] = useState(false)
+  const [step, setStep] =
+    useState(1)
+
+  const [enviado, setEnviado] =
+    useState(false)
+
+  const [loading, setLoading] =
+    useState(false)
+
+  const [erroGeral, setErroGeral] =
+    useState('')
+
+  const [
+    numeroMatricula,
+    setNumeroMatricula,
+  ] = useState('')
+
+  const [erros, setErros] =
+    useState({})
+
+  const [
+    aceitouTermos,
+    setAceitouTermos,
+  ] = useState(false)
 
   const [form, setForm] = useState({
     nome: '',
-    idade: '',
+
+    nascimento_dia: '',
+    nascimento_mes: '',
+    nascimento_ano: '',
+
     cpf: '',
     telefone: '',
     sexo: '',
@@ -204,46 +431,96 @@ export default function Matricula() {
     tipo_matricula: 'matricula',
     pcd: 'nao',
     oficinas: [],
+
     resp_nome: '',
     resp_telefone: '',
     resp_email: '',
+
     integrantes_familia: '',
     programas_sociais: [],
+
     responsavel_no_grupo_whatsapp: '',
   })
 
+  const dataNascimento =
+    montarDataNascimento(
+      form.nascimento_dia,
+      form.nascimento_mes,
+      form.nascimento_ano
+    )
+
+  const idadeCalculada =
+    dataNascimento
+      ? calcularIdade(dataNascimento)
+      : null
+
   function set(field, value) {
-    setForm(f => ({ ...f, [field]: value }))
-    setErros(e => ({ ...e, [field]: '' }))
+    setForm(f => ({
+      ...f,
+      [field]: value,
+    }))
+
+    setErros(e => ({
+      ...e,
+      [field]: '',
+      ...(
+        field.startsWith('nascimento_')
+          ? { data_nascimento: '' }
+          : {}
+      ),
+    }))
   }
 
   function toggleOficina(oficina) {
     setForm(f => ({
       ...f,
-      oficinas: f.oficinas.includes(oficina)
-        ? f.oficinas.filter(item => item !== oficina)
-        : [...f.oficinas, oficina]
+
+      oficinas:
+        f.oficinas.includes(oficina)
+          ? f.oficinas.filter(
+              item => item !== oficina
+            )
+          : [
+              ...f.oficinas,
+              oficina,
+            ],
     }))
   }
 
   function togglePrograma(programa) {
     setForm(f => {
-      let lista = [...f.programas_sociais]
+      let lista = [
+        ...f.programas_sociais,
+      ]
 
       if (programa === 'Nenhum') {
         return {
           ...f,
-          programas_sociais: lista.includes('Nenhum') ? [] : ['Nenhum']
+
+          programas_sociais:
+            lista.includes('Nenhum')
+              ? []
+              : ['Nenhum'],
         }
       }
 
-      lista = lista.filter(item => item !== 'Nenhum')
+      lista = lista.filter(
+        item => item !== 'Nenhum'
+      )
 
       return {
         ...f,
-        programas_sociais: lista.includes(programa)
-          ? lista.filter(item => item !== programa)
-          : [...lista, programa]
+
+        programas_sociais:
+          lista.includes(programa)
+            ? lista.filter(
+                item =>
+                  item !== programa
+              )
+            : [
+                ...lista,
+                programa,
+              ],
       }
     })
   }
@@ -251,90 +528,206 @@ export default function Matricula() {
   function validarStep1() {
     const e = {}
 
-    if (!form.nome.trim()) e.nome = 'Nome obrigatório'
+    if (!form.nome.trim()) {
+      e.nome =
+        'Nome obrigatório'
+    }
 
-    if (!form.idade) {
-      e.idade = 'Idade obrigatória'
-    } else if (Number(form.idade) < 8 || Number(form.idade) > 18) {
-      e.idade = 'Idade deve ser entre 8 e 18 anos'
+    if (
+      !form.nascimento_dia ||
+      !form.nascimento_mes ||
+      !form.nascimento_ano
+    ) {
+      e.data_nascimento =
+        'Informe dia, mês e ano de nascimento'
+    } else if (!dataNascimento) {
+      e.data_nascimento =
+        'Data de nascimento inválida'
+    } else if (
+      idadeCalculada === null ||
+      idadeCalculada < 8 ||
+      idadeCalculada > 18
+    ) {
+      e.data_nascimento =
+        'O aluno deve ter entre 8 e 18 anos'
     }
 
     if (!form.cpf.trim()) {
-      e.cpf = 'CPF obrigatório'
-    } else if (!cpfValido(form.cpf)) {
-      e.cpf = 'CPF inválido'
+      e.cpf =
+        'CPF obrigatório'
+    } else if (
+      !cpfValido(form.cpf)
+    ) {
+      e.cpf =
+        'CPF inválido'
     }
 
     if (!form.telefone.trim()) {
-      e.telefone = 'Telefone obrigatório'
-    } else if (!telefoneValido(form.telefone)) {
-      e.telefone = 'Informe um telefone com DDD'
+      e.telefone =
+        'Telefone obrigatório'
+    } else if (
+      !telefoneValido(form.telefone)
+    ) {
+      e.telefone =
+        'Informe um telefone com DDD'
     }
 
-    if (form.oficinas.length === 0) e.oficinas = 'Selecione ao menos uma oficina'
-    if (!form.sexo) e.sexo = 'Sexo obrigatório'
-    if (!form.raca) e.raca = 'Raça obrigatória'
-    if (!form.escola) e.escola = 'Escola obrigatória'
-    if (!form.bairro) e.bairro = 'Bairro obrigatório'
-    if (!form.rede_ensino) e.rede_ensino = 'Rede de ensino obrigatória'
-    if (!form.tipo_matricula) e.tipo_matricula = 'Tipo de matrícula obrigatório'
-    if (!form.pcd) e.pcd = 'Campo obrigatório'
+    if (
+      form.oficinas.length === 0
+    ) {
+      e.oficinas =
+        'Selecione ao menos uma oficina'
+    }
+
+    if (!form.sexo) {
+      e.sexo =
+        'Sexo obrigatório'
+    }
+
+    if (!form.raca) {
+      e.raca =
+        'Raça obrigatória'
+    }
+
+    if (!form.escola) {
+      e.escola =
+        'Escola obrigatória'
+    }
+
+    if (!form.bairro) {
+      e.bairro =
+        'Bairro obrigatório'
+    }
+
+    if (!form.rede_ensino) {
+      e.rede_ensino =
+        'Rede de ensino obrigatória'
+    }
+
+    if (!form.tipo_matricula) {
+      e.tipo_matricula =
+        'Tipo de matrícula obrigatório'
+    }
+
+    if (!form.pcd) {
+      e.pcd =
+        'Campo obrigatório'
+    }
 
     setErros(e)
-    return Object.keys(e).length === 0
+
+    return (
+      Object.keys(e).length === 0
+    )
   }
 
   function validarStep2() {
     const e = {}
 
-    if (!form.resp_nome.trim()) e.resp_nome = 'Nome do responsável obrigatório'
-
-    if (!form.resp_telefone.trim()) {
-      e.resp_telefone = 'Telefone do responsável obrigatório'
-    } else if (!telefoneValido(form.resp_telefone)) {
-      e.resp_telefone = 'Informe um telefone com DDD'
+    if (!form.resp_nome.trim()) {
+      e.resp_nome =
+        'Nome do responsável obrigatório'
     }
 
-    if (!emailValido(form.resp_email)) {
-      e.resp_email = 'E-mail inválido'
+    if (
+      !form.resp_telefone.trim()
+    ) {
+      e.resp_telefone =
+        'Telefone do responsável obrigatório'
+    } else if (
+      !telefoneValido(
+        form.resp_telefone
+      )
+    ) {
+      e.resp_telefone =
+        'Informe um telefone com DDD'
     }
 
-    if (form.integrantes_familia) {
-      const integrantes = Number(form.integrantes_familia)
+    if (
+      !emailValido(
+        form.resp_email
+      )
+    ) {
+      e.resp_email =
+        'E-mail inválido'
+    }
 
-      if (!Number.isInteger(integrantes) || integrantes < 1 || integrantes > 20) {
-        e.integrantes_familia = 'Informe um número entre 1 e 20'
+    if (
+      form.integrantes_familia
+    ) {
+      const integrantes =
+        Number(
+          form.integrantes_familia
+        )
+
+      if (
+        !Number.isInteger(
+          integrantes
+        ) ||
+        integrantes < 1 ||
+        integrantes > 20
+      ) {
+        e.integrantes_familia =
+          'Informe um número entre 1 e 20'
       }
     }
 
     setErros(e)
-    return Object.keys(e).length === 0
+
+    return (
+      Object.keys(e).length === 0
+    )
   }
 
   function avancar() {
-    if (step === 1 && !validarStep1()) return
-    if (step === 2 && !validarStep2()) return
+    if (
+      step === 1 &&
+      !validarStep1()
+    ) {
+      return
+    }
+
+    if (
+      step === 2 &&
+      !validarStep2()
+    ) {
+      return
+    }
+
     setStep(s => s + 1)
+
     window.scrollTo(0, 0)
   }
 
   function voltar() {
     setStep(s => s - 1)
+
     window.scrollTo(0, 0)
   }
 
   async function enviar() {
-    if (!form.responsavel_no_grupo_whatsapp) {
+    if (
+      !form.responsavel_no_grupo_whatsapp
+    ) {
       setErros(e => ({
         ...e,
-        responsavel_no_grupo_whatsapp: 'Informe se o responsável já participa do grupo.',
+
+        responsavel_no_grupo_whatsapp:
+          'Informe se o responsável já participa do grupo.',
       }))
-      setErroGeral('Responda à pergunta sobre o grupo de responsáveis.')
+
+      setErroGeral(
+        'Responda à pergunta sobre o grupo de responsáveis.'
+      )
+
       return
     }
 
     if (!aceitouTermos) {
-      setErroGeral('Você precisa aceitar os termos para continuar.')
+      setErroGeral(
+        'Você precisa aceitar os termos para continuar.'
+      )
+
       return
     }
 
@@ -342,194 +735,459 @@ export default function Matricula() {
     setErroGeral('')
 
     try {
-      const oficinasSelecionadas = [...new Set(form.oficinas)].filter(Boolean)
+      const oficinasSelecionadas =
+        [
+          ...new Set(
+            form.oficinas
+          ),
+        ].filter(Boolean)
 
-      if (oficinasSelecionadas.length === 0) {
-        throw new Error('Nenhuma oficina foi selecionada.')
+      if (
+        oficinasSelecionadas.length === 0
+      ) {
+        throw new Error(
+          'Nenhuma oficina foi selecionada.'
+        )
       }
 
-      const cpfNormalizado = normalizarCpf(form.cpf)
-      const telefoneAlunoNormalizado = normalizarTelefone(form.telefone)
-      const telefoneResponsavelNormalizado = normalizarTelefone(form.resp_telefone)
-      const emailResponsavelNormalizado = form.resp_email?.trim().toLowerCase() || null
+      const idade =
+        calcularIdade(
+          dataNascimento
+        )
+
+      if (
+        !dataNascimento ||
+        idade === null ||
+        idade < 8 ||
+        idade > 18
+      ) {
+        throw new Error(
+          'O aluno deve ter entre 8 e 18 anos.'
+        )
+      }
+
+      const cpfNormalizado =
+        normalizarCpf(form.cpf)
+
+      const telefoneAlunoNormalizado =
+        normalizarTelefone(
+          form.telefone
+        )
+
+      const telefoneResponsavelNormalizado =
+        normalizarTelefone(
+          form.resp_telefone
+        )
+
+      const emailResponsavelNormalizado =
+        form.resp_email
+          ?.trim()
+          .toLowerCase() ||
+        null
+
       const programasSociaisNormalizados =
-        form.programas_sociais.length > 0 ? form.programas_sociais : ['Nenhum']
+        form.programas_sociais
+          .length > 0
+          ? form.programas_sociais
+          : ['Nenhum']
 
-      if (!cpfValido(cpfNormalizado)) {
-        throw new Error('O CPF informado é inválido.')
+      if (
+        !cpfValido(
+          cpfNormalizado
+        )
+      ) {
+        throw new Error(
+          'O CPF informado é inválido.'
+        )
       }
 
-      if (!telefoneValido(telefoneAlunoNormalizado)) {
-        throw new Error('O telefone do aluno é inválido.')
+      if (
+        !telefoneValido(
+          telefoneAlunoNormalizado
+        )
+      ) {
+        throw new Error(
+          'O telefone do aluno é inválido.'
+        )
       }
 
-      if (!telefoneValido(telefoneResponsavelNormalizado)) {
-        throw new Error('O telefone do responsável é inválido.')
+      if (
+        !telefoneValido(
+          telefoneResponsavelNormalizado
+        )
+      ) {
+        throw new Error(
+          'O telefone do responsável é inválido.'
+        )
       }
 
-      if (!emailValido(emailResponsavelNormalizado || '')) {
-        throw new Error('O e-mail do responsável é inválido.')
+      if (
+        !emailValido(
+          emailResponsavelNormalizado ||
+          ''
+        )
+      ) {
+        throw new Error(
+          'O e-mail do responsável é inválido.'
+        )
       }
 
-      // Impede uma segunda inscrição do mesmo CPF somente no período 2026.2.
-      // O mesmo CPF existente em 2026.1 continua autorizado.
-      const { data: cadastrosExistentes, error: errVerificacaoCpf } = await supabase
+      const {
+        data: cadastrosExistentes,
+        error: errVerificacaoCpf,
+      } = await supabase
         .from('alunos')
         .select('id')
-        .eq('cpf', cpfNormalizado)
-        .eq('periodo_letivo', PERIODO_LETIVO)
+        .eq(
+          'cpf',
+          cpfNormalizado
+        )
+        .eq(
+          'periodo_letivo',
+          PERIODO_LETIVO
+        )
         .limit(1)
 
-      if (errVerificacaoCpf) throw errVerificacaoCpf
+      if (
+        errVerificacaoCpf
+      ) {
+        throw errVerificacaoCpf
+      }
 
-      if (cadastrosExistentes && cadastrosExistentes.length > 0) {
+      if (
+        cadastrosExistentes &&
+        cadastrosExistentes.length > 0
+      ) {
         throw new Error(
           `Já existe uma matrícula ou rematrícula para este CPF no período ${PERIODO_LETIVO}.`
         )
       }
 
-      const numMatricula = `${ANO_ATUAL}-${form.tipo_matricula === 'rematricula' ? 'B' : 'A'}-MAD-${Date.now().toString().slice(-6)}`
+      const numMatricula =
+        `${ANO_ATUAL}-${
+          form.tipo_matricula ===
+          'rematricula'
+            ? 'B'
+            : 'A'
+        }-MAD-${
+          Date.now()
+            .toString()
+            .slice(-6)
+        }`
 
-      const { error: errAluno } = await supabase
+      const {
+        error: errAluno,
+      } = await supabase
         .from('alunos')
         .insert({
-          numero_matricula: numMatricula,
-          tipo: form.tipo_matricula,
-          nome: form.nome.trim(),
-          cpf: cpfNormalizado,
-          telefone: telefoneAlunoNormalizado,
-          idade: form.idade ? Number(form.idade) : null,
-          data_nascimento: null,
+          numero_matricula:
+            numMatricula,
+
+          tipo:
+            form.tipo_matricula,
+
+          nome:
+            form.nome.trim(),
+
+          cpf:
+            cpfNormalizado,
+
+          telefone:
+            telefoneAlunoNormalizado,
+
+          idade,
+
+          data_nascimento:
+            dataNascimento,
+
           sexo:
-            form.sexo === 'Masculino'
+            form.sexo ===
+            'Masculino'
               ? 'M'
-              : form.sexo === 'Feminino'
+              : form.sexo ===
+                'Feminino'
                 ? 'F'
                 : 'O',
-          raca: form.raca,
-          religiao: form.religiao || null,
-          bairro: form.bairro,
-          rede_ensino: form.rede_ensino,
-          escola_origem: form.escola,
-          programa_social: programasSociaisNormalizados,
-          integrantes_familia: form.integrantes_familia
-            ? Number(form.integrantes_familia)
-            : null,
-          pcd: form.pcd === 'sim',
-          status: 'ativo',
-          ano_letivo: ANO_ATUAL,
-          periodo_letivo: PERIODO_LETIVO,
-          aceite_uso_imagem: true,
-          aceite_uso_imagem_em: new Date().toISOString(),
-          versao_termo_imagem: VERSAO_TERMO_IMAGEM,
+
+          raca:
+            form.raca,
+
+          religiao:
+            form.religiao ||
+            null,
+
+          bairro:
+            form.bairro,
+
+          rede_ensino:
+            form.rede_ensino,
+
+          escola_origem:
+            form.escola,
+
+          programa_social:
+            programasSociaisNormalizados,
+
+          integrantes_familia:
+            form.integrantes_familia
+              ? Number(
+                  form.integrantes_familia
+                )
+              : null,
+
+          pcd:
+            form.pcd === 'sim',
+
+          status:
+            'ativo',
+
+          ano_letivo:
+            ANO_ATUAL,
+
+          periodo_letivo:
+            PERIODO_LETIVO,
+
+          aceite_uso_imagem:
+            true,
+
+          aceite_uso_imagem_em:
+            new Date()
+              .toISOString(),
+
+          versao_termo_imagem:
+            VERSAO_TERMO_IMAGEM,
         })
 
-      if (errAluno) throw errAluno
+      if (errAluno) {
+        throw errAluno
+      }
 
-      const { data: alunoBuscado, error: errBuscaAluno } = await supabase
+      const {
+        data: alunoBuscado,
+        error: errBuscaAluno,
+      } = await supabase
         .from('alunos')
-        .select('id, numero_matricula')
-        .eq('numero_matricula', numMatricula)
+        .select(
+          'id, numero_matricula'
+        )
+        .eq(
+          'numero_matricula',
+          numMatricula
+        )
         .limit(1)
         .single()
 
-      if (errBuscaAluno) throw errBuscaAluno
-
-      const { error: errResponsavel } = await supabase
-        .from('responsaveis')
-        .insert({
-          aluno_id: alunoBuscado.id,
-          nome: form.resp_nome.trim(),
-          telefone: telefoneResponsavelNormalizado,
-          email: emailResponsavelNormalizado,
-          no_grupo_whatsapp: form.responsavel_no_grupo_whatsapp === 'sim',
-          whatsapp_status: 'pendente',
-        })
-
-      if (errResponsavel) throw errResponsavel
-
-      const { data: oficinasDB, error: errBuscaOficinas } = await supabase
-        .from('oficinas')
-        .select('id, nome')
-        .in('nome', oficinasSelecionadas)
-
-      if (errBuscaOficinas) throw errBuscaOficinas
-
-      if (!oficinasDB || oficinasDB.length === 0) {
-        throw new Error('Nenhuma oficina selecionada foi encontrada no banco.')
+      if (errBuscaAluno) {
+        throw errBuscaAluno
       }
 
-      if (oficinasDB.length !== oficinasSelecionadas.length) {
-        const nomesEncontrados = oficinasDB.map(o => o.nome)
-        const nomesFaltando = oficinasSelecionadas.filter(
-          nome => !nomesEncontrados.includes(nome)
+      const {
+        error: errResponsavel,
+      } = await supabase
+        .from('responsaveis')
+        .insert({
+          aluno_id:
+            alunoBuscado.id,
+
+          nome:
+            form.resp_nome.trim(),
+
+          telefone:
+            telefoneResponsavelNormalizado,
+
+          email:
+            emailResponsavelNormalizado,
+
+          no_grupo_whatsapp:
+            form.responsavel_no_grupo_whatsapp ===
+            'sim',
+
+          whatsapp_status:
+            'pendente',
+        })
+
+      if (errResponsavel) {
+        throw errResponsavel
+      }
+
+      const {
+        data: oficinasDB,
+        error: errBuscaOficinas,
+      } = await supabase
+        .from('oficinas')
+        .select('id, nome')
+        .in(
+          'nome',
+          oficinasSelecionadas
         )
+
+      if (errBuscaOficinas) {
+        throw errBuscaOficinas
+      }
+
+      if (
+        !oficinasDB ||
+        oficinasDB.length === 0
+      ) {
+        throw new Error(
+          'Nenhuma oficina selecionada foi encontrada no banco.'
+        )
+      }
+
+      if (
+        oficinasDB.length !==
+        oficinasSelecionadas.length
+      ) {
+        const nomesEncontrados =
+          oficinasDB.map(
+            o => o.nome
+          )
+
+        const nomesFaltando =
+          oficinasSelecionadas.filter(
+            nome =>
+              !nomesEncontrados
+                .includes(nome)
+          )
 
         throw new Error(
           `Algumas oficinas não foram encontradas: ${nomesFaltando.join(', ')}`
         )
       }
 
-      const payloadOficinas = oficinasDB.map(oficina => ({
-        aluno_id: alunoBuscado.id,
-        oficina_id: oficina.id,
-        ano_letivo: ANO_ATUAL,
-        periodo_letivo: PERIODO_LETIVO,
-      }))
+      const payloadOficinas =
+        oficinasDB.map(
+          oficina => ({
+            aluno_id:
+              alunoBuscado.id,
 
-      const { data: matriculasExistentes, error: errBuscaMatriculas } = await supabase
-        .from('matriculas_oficinas')
+            oficina_id:
+              oficina.id,
+
+            ano_letivo:
+              ANO_ATUAL,
+
+            periodo_letivo:
+              PERIODO_LETIVO,
+          })
+        )
+
+      const {
+        data:
+          matriculasExistentes,
+        error:
+          errBuscaMatriculas,
+      } = await supabase
+        .from(
+          'matriculas_oficinas'
+        )
         .select('oficina_id')
-        .eq('aluno_id', alunoBuscado.id)
-        .eq('ano_letivo', ANO_ATUAL)
-        .eq('periodo_letivo', PERIODO_LETIVO)
+        .eq(
+          'aluno_id',
+          alunoBuscado.id
+        )
+        .eq(
+          'ano_letivo',
+          ANO_ATUAL
+        )
+        .eq(
+          'periodo_letivo',
+          PERIODO_LETIVO
+        )
 
-      if (errBuscaMatriculas) throw errBuscaMatriculas
-
-      const idsJaMatriculados = (matriculasExistentes || []).map(
-        matricula => matricula.oficina_id
-      )
-
-      const novasOficinas = payloadOficinas.filter(
-        matricula => !idsJaMatriculados.includes(matricula.oficina_id)
-      )
-
-      if (novasOficinas.length > 0) {
-        const { error: errMatriculas } = await supabase
-          .from('matriculas_oficinas')
-          .insert(novasOficinas)
-
-        if (errMatriculas) throw errMatriculas
+      if (
+        errBuscaMatriculas
+      ) {
+        throw errBuscaMatriculas
       }
 
-      const { error: errConfirmacaoWhatsApp } = await supabase.functions.invoke(
-        'enviar-confirmacao-matricula',
-        {
-          body: {
-            aluno_id: alunoBuscado.id,
-          },
-        }
-      )
+      const idsJaMatriculados =
+        (
+          matriculasExistentes ||
+          []
+        ).map(
+          matricula =>
+            matricula.oficina_id
+        )
 
-      if (errConfirmacaoWhatsApp) {
+      const novasOficinas =
+        payloadOficinas.filter(
+          matricula =>
+            !idsJaMatriculados
+              .includes(
+                matricula.oficina_id
+              )
+        )
+
+      if (
+        novasOficinas.length > 0
+      ) {
+        const {
+          error:
+            errMatriculas,
+        } = await supabase
+          .from(
+            'matriculas_oficinas'
+          )
+          .insert(
+            novasOficinas
+          )
+
+        if (errMatriculas) {
+          throw errMatriculas
+        }
+      }
+
+      const {
+        error:
+          errConfirmacaoWhatsApp,
+      } =
+        await supabase
+          .functions
+          .invoke(
+            'enviar-confirmacao-matricula',
+            {
+              body: {
+                aluno_id:
+                  alunoBuscado.id,
+              },
+            }
+          )
+
+      if (
+        errConfirmacaoWhatsApp
+      ) {
         console.error(
           'A matrícula foi concluída, mas não foi possível iniciar a confirmação pelo WhatsApp:',
           errConfirmacaoWhatsApp
         )
       }
 
-      setNumeroMatricula(alunoBuscado.numero_matricula)
+      setNumeroMatricula(
+        alunoBuscado
+          .numero_matricula
+      )
+
       setEnviado(true)
+
       window.scrollTo(0, 0)
     } catch (err) {
-      console.error('Erro ao enviar matrícula:', err)
+      console.error(
+        'Erro ao enviar matrícula:',
+        err
+      )
 
-      if (err?.code === '23505') {
+      if (
+        err?.code === '23505'
+      ) {
         setErroGeral(
           `Já existe uma matrícula ou rematrícula para este CPF no período ${PERIODO_LETIVO}.`
         )
       } else {
-        setErroGeral(err?.message || 'Erro ao enviar matrícula. Tente novamente.')
+        setErroGeral(
+          err?.message ||
+          'Erro ao enviar matrícula. Tente novamente.'
+        )
       }
     } finally {
       setLoading(false)
@@ -541,7 +1199,10 @@ export default function Matricula() {
       <div className="min-h-screen bg-mis-bg flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-verde/20 border border-verde/30 rounded-full mb-6">
-            <Check size={40} className="text-verde-light" />
+            <Check
+              size={40}
+              className="text-verde-light"
+            />
           </div>
 
           <h1 className="text-2xl font-black text-mis-texto font-poppins mb-2">
@@ -549,14 +1210,22 @@ export default function Matricula() {
           </h1>
 
           <p className="text-mis-texto2 text-sm mb-6">
-            A matrícula de <strong className="text-mis-texto">{form.nome}</strong> foi registrada com sucesso.
+            A matrícula de{' '}
+            <strong className="text-mis-texto">
+              {form.nome}
+            </strong>{' '}
+            foi registrada com sucesso.
           </p>
 
           <div className="mis-card mb-6">
             <p className="text-xs text-mis-texto2 mb-1 uppercase tracking-widest font-semibold">
               Número de Matrícula
             </p>
-            <p className="text-2xl font-black text-amarelo font-mono">{numeroMatricula}</p>
+
+            <p className="text-2xl font-black text-amarelo font-mono">
+              {numeroMatricula}
+            </p>
+
             <p className="text-xs text-mis-texto2 mt-2">
               Guarde este número para consultas futuras.
             </p>
@@ -566,12 +1235,18 @@ export default function Matricula() {
             <p className="text-xs font-semibold text-mis-texto2 uppercase tracking-widest mb-3">
               Oficinas inscritas
             </p>
+
             <div className="flex flex-wrap gap-2">
-              {form.oficinas.map(oficina => (
-                <span key={oficina} className="badge badge-amarelo">
-                  {oficina}
-                </span>
-              ))}
+              {form.oficinas.map(
+                oficina => (
+                  <span
+                    key={oficina}
+                    className="badge badge-amarelo"
+                  >
+                    {oficina}
+                  </span>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -582,66 +1257,250 @@ export default function Matricula() {
   return (
     <div className="min-h-screen bg-mis-bg py-8 px-4">
       <div className="max-w-lg mx-auto">
+
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-amarelo rounded-2xl mb-4">
-            <Music size={28} className="text-black" />
+            <Music
+              size={28}
+              className="text-black"
+            />
           </div>
-          <h1 className="text-2xl font-black text-mis-texto font-poppins">Made In Sertão</h1>
-          <p className="text-mis-texto2 text-sm mt-1">Portal de Matrícula {ANO_ATUAL}</p>
+
+          <h1 className="text-2xl font-black text-mis-texto font-poppins">
+            Made In Sertão
+          </h1>
+
+          <p className="text-mis-texto2 text-sm mt-1">
+            Portal de Matrícula {ANO_ATUAL}
+          </p>
         </div>
 
-        <StepIndicator step={step} total={3} />
+        <StepIndicator
+          step={step}
+          total={3}
+        />
 
         {step === 1 && (
           <div className="space-y-6 animate-fade-in">
+
             <div className="mis-card">
               <h2 className="section-title mb-4 flex items-center gap-2">
                 <span className="w-6 h-6 bg-amarelo/20 text-amarelo rounded flex items-center justify-center">
                   <User size={14} />
                 </span>
+
                 Dados do Aluno
               </h2>
 
               <div className="space-y-4">
+
                 <Input
                   label="Nome completo"
                   required
                   placeholder="Nome do aluno"
                   value={form.nome}
-                  onChange={e => set('nome', e.target.value)}
+                  onChange={
+                    e =>
+                      set(
+                        'nome',
+                        e.target.value
+                      )
+                  }
                   error={erros.nome}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Idade"
-                    required
-                    type="number"
-                    min="8"
-                    max="18"
-                    placeholder="Ex: 14"
-                    value={form.idade}
-                    onChange={e => set('idade', e.target.value)}
-                    error={erros.idade}
-                  />
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <CalendarDays
+                      size={16}
+                      className="text-amarelo"
+                    />
 
-                  <Input
-                    label="CPF"
-                    required
-                    placeholder="000.000.000-00"
-                    value={form.cpf}
-                    onChange={e => set('cpf', e.target.value)}
-                    error={erros.cpf}
-                  />
+                    <span className="text-xs font-semibold uppercase tracking-widest text-mis-texto2">
+                      Data de nascimento
+                      <span className="text-amarelo">
+                        {' '}*
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-[0.8fr_1.4fr_1fr] gap-2">
+
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-mis-texto2 mb-1">
+                        Dia
+                      </span>
+
+                      <select
+                        className={`w-full bg-mis-bg3 border ${
+                          erros.data_nascimento
+                            ? 'border-red-500'
+                            : 'border-mis-borda'
+                        } text-mis-texto rounded-lg px-2 py-2.5 text-sm font-poppins outline-none focus:border-amarelo`}
+                        value={
+                          form.nascimento_dia
+                        }
+                        onChange={
+                          e =>
+                            set(
+                              'nascimento_dia',
+                              e.target.value
+                            )
+                        }
+                      >
+                        <option value="">
+                          Dia
+                        </option>
+
+                        {DIAS_NASCIMENTO.map(
+                          dia => (
+                            <option
+                              key={dia}
+                              value={
+                                String(dia)
+                                  .padStart(
+                                    2,
+                                    '0'
+                                  )
+                              }
+                            >
+                              {String(dia)
+                                .padStart(
+                                  2,
+                                  '0'
+                                )}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-mis-texto2 mb-1">
+                        Mês
+                      </span>
+
+                      <select
+                        className={`w-full bg-mis-bg3 border ${
+                          erros.data_nascimento
+                            ? 'border-red-500'
+                            : 'border-mis-borda'
+                        } text-mis-texto rounded-lg px-2 py-2.5 text-sm font-poppins outline-none focus:border-amarelo`}
+                        value={
+                          form.nascimento_mes
+                        }
+                        onChange={
+                          e =>
+                            set(
+                              'nascimento_mes',
+                              e.target.value
+                            )
+                        }
+                      >
+                        <option value="">
+                          Mês
+                        </option>
+
+                        {MESES_NASCIMENTO.map(
+                          mes => (
+                            <option
+                              key={mes.valor}
+                              value={mes.valor}
+                            >
+                              {mes.nome}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-mis-texto2 mb-1">
+                        Ano
+                      </span>
+
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Ex: 2012"
+                        className={`w-full bg-mis-bg3 border ${
+                          erros.data_nascimento
+                            ? 'border-red-500'
+                            : 'border-mis-borda'
+                        } text-mis-texto rounded-lg px-2 py-2.5 text-sm font-poppins outline-none transition-colors focus:border-amarelo placeholder:text-mis-texto2`}
+                        value={
+                          form.nascimento_ano
+                        }
+                        onChange={
+                          e =>
+                            set(
+                              'nascimento_ano',
+                              e.target.value
+                            )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {erros.data_nascimento && (
+                    <p className="text-red-400 text-xs mt-2">
+                      {erros.data_nascimento}
+                    </p>
+                  )}
+
+                  {dataNascimento &&
+                    idadeCalculada !== null && (
+                      <div className="mt-2 flex items-center justify-between bg-mis-bg3 border border-mis-borda rounded-lg px-3 py-2">
+                        <span className="text-xs text-mis-texto2">
+                          Idade calculada
+                        </span>
+
+                        <span
+                          className={`text-xs font-bold ${
+                            idadeCalculada >= 8 &&
+                            idadeCalculada <= 18
+                              ? 'text-amarelo'
+                              : 'text-red-400'
+                          }`}
+                        >
+                          {idadeCalculada} anos
+                        </span>
+                      </div>
+                    )}
                 </div>
+
+                <Input
+                  label="CPF"
+                  required
+                  placeholder="000.000.000-00"
+                  value={form.cpf}
+                  onChange={
+                    e =>
+                      set(
+                        'cpf',
+                        e.target.value
+                      )
+                  }
+                  error={erros.cpf}
+                />
 
                 <Input
                   label="Telefone"
                   required
                   placeholder="(00) 00000-0000"
-                  value={form.telefone}
-                  onChange={e => set('telefone', e.target.value)}
-                  error={erros.telefone}
+                  value={
+                    form.telefone
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'telefone',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.telefone
+                  }
                 />
               </div>
             </div>
@@ -651,54 +1510,92 @@ export default function Matricula() {
                 <span className="w-6 h-6 bg-amarelo/20 text-amarelo rounded flex items-center justify-center">
                   <Guitar size={14} />
                 </span>
+
                 Oficinas
               </h2>
 
-              <p className="text-xs text-mis-texto2 mb-4">Selecione uma ou mais oficinas.</p>
+              <p className="text-xs text-mis-texto2 mb-4">
+                Selecione uma ou mais oficinas.
+              </p>
 
               <div className="grid grid-cols-2 gap-2">
-                {OFICINAS.map(oficina => (
-                  <button
-                    key={oficina}
-                    type="button"
-                    onClick={() => toggleOficina(oficina)}
-                    className={`
-                      flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left
-                      border transition-all duration-150
-                      ${form.oficinas.includes(oficina)
-                        ? 'bg-amarelo/15 border-amarelo text-amarelo'
-                        : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-amarelo/50'}
-                    `}
-                  >
-                    <div
-                      className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                        form.oficinas.includes(oficina)
-                          ? 'bg-amarelo border-amarelo'
-                          : 'border-mis-borda'
-                      }`}
+                {OFICINAS.map(
+                  oficina => (
+                    <button
+                      key={oficina}
+                      type="button"
+                      onClick={() =>
+                        toggleOficina(
+                          oficina
+                        )
+                      }
+                      className={`
+                        flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left
+                        border transition-all duration-150
+                        ${
+                          form.oficinas.includes(
+                            oficina
+                          )
+                            ? 'bg-amarelo/15 border-amarelo text-amarelo'
+                            : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-amarelo/50'
+                        }
+                      `}
                     >
-                      {form.oficinas.includes(oficina) && <Check size={10} className="text-black" />}
-                    </div>
-                    {oficina}
-                  </button>
-                ))}
+                      <div
+                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                          form.oficinas.includes(
+                            oficina
+                          )
+                            ? 'bg-amarelo border-amarelo'
+                            : 'border-mis-borda'
+                        }`}
+                      >
+                        {form.oficinas.includes(
+                          oficina
+                        ) && (
+                          <Check
+                            size={10}
+                            className="text-black"
+                          />
+                        )}
+                      </div>
+
+                      {oficina}
+                    </button>
+                  )
+                )}
               </div>
 
-              {erros.oficinas && <p className="text-red-400 text-xs mt-2">{erros.oficinas}</p>}
+              {erros.oficinas && (
+                <p className="text-red-400 text-xs mt-2">
+                  {erros.oficinas}
+                </p>
+              )}
             </div>
 
             <div className="mis-card">
-              <h2 className="section-title mb-4">Informações Complementares</h2>
+              <h2 className="section-title mb-4">
+                Informações Complementares
+              </h2>
 
               <div className="space-y-4">
+
                 <Select
                   label="Sexo"
                   required
                   value={form.sexo}
-                  onChange={e => set('sexo', e.target.value)}
+                  onChange={
+                    e =>
+                      set(
+                        'sexo',
+                        e.target.value
+                      )
+                  }
                   error={erros.sexo}
                 >
-                  <option value="">Selecione</option>
+                  <option value="">
+                    Selecione
+                  </option>
                   <option>Masculino</option>
                   <option>Feminino</option>
                   <option>Outro</option>
@@ -708,10 +1605,18 @@ export default function Matricula() {
                   label="Raça"
                   required
                   value={form.raca}
-                  onChange={e => set('raca', e.target.value)}
+                  onChange={
+                    e =>
+                      set(
+                        'raca',
+                        e.target.value
+                      )
+                  }
                   error={erros.raca}
                 >
-                  <option value="">Selecione</option>
+                  <option value="">
+                    Selecione
+                  </option>
                   <option>Branca</option>
                   <option>Preta</option>
                   <option>Parda</option>
@@ -722,10 +1627,20 @@ export default function Matricula() {
 
                 <Select
                   label="Religião"
-                  value={form.religiao}
-                  onChange={e => set('religiao', e.target.value)}
+                  value={
+                    form.religiao
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'religiao',
+                        e.target.value
+                      )
+                  }
                 >
-                  <option value="">Selecione (opcional)</option>
+                  <option value="">
+                    Selecione (opcional)
+                  </option>
                   <option>Católica</option>
                   <option>Evangélica</option>
                   <option>Espírita</option>
@@ -738,36 +1653,78 @@ export default function Matricula() {
                   label="Escola onde estuda"
                   required
                   value={form.escola}
-                  onChange={e => set('escola', e.target.value)}
+                  onChange={
+                    e =>
+                      set(
+                        'escola',
+                        e.target.value
+                      )
+                  }
                   error={erros.escola}
                 >
-                  <option value="">Selecione a escola</option>
-                  {ESCOLAS.map(escola => (
-                    <option key={escola}>{escola}</option>
-                  ))}
+                  <option value="">
+                    Selecione a escola
+                  </option>
+
+                  {ESCOLAS.map(
+                    escola => (
+                      <option
+                        key={escola}
+                      >
+                        {escola}
+                      </option>
+                    )
+                  )}
                 </Select>
 
                 <Select
                   label="Bairro onde mora"
                   required
                   value={form.bairro}
-                  onChange={e => set('bairro', e.target.value)}
+                  onChange={
+                    e =>
+                      set(
+                        'bairro',
+                        e.target.value
+                      )
+                  }
                   error={erros.bairro}
                 >
-                  <option value="">Selecione o bairro</option>
-                  {BAIRROS.map(bairro => (
-                    <option key={bairro}>{bairro}</option>
-                  ))}
+                  <option value="">
+                    Selecione o bairro
+                  </option>
+
+                  {BAIRROS.map(
+                    bairro => (
+                      <option
+                        key={bairro}
+                      >
+                        {bairro}
+                      </option>
+                    )
+                  )}
                 </Select>
 
                 <Select
                   label="Rede de Ensino"
                   required
-                  value={form.rede_ensino}
-                  onChange={e => set('rede_ensino', e.target.value)}
-                  error={erros.rede_ensino}
+                  value={
+                    form.rede_ensino
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'rede_ensino',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.rede_ensino
+                  }
                 >
-                  <option value="">Selecione</option>
+                  <option value="">
+                    Selecione
+                  </option>
                   <option>Pública</option>
                   <option>Privada</option>
                   <option>Não estuda</option>
@@ -776,31 +1733,63 @@ export default function Matricula() {
                 <Select
                   label="Tipo de Matrícula"
                   required
-                  value={form.tipo_matricula}
-                  onChange={e => set('tipo_matricula', e.target.value)}
-                  error={erros.tipo_matricula}
+                  value={
+                    form.tipo_matricula
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'tipo_matricula',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.tipo_matricula
+                  }
                 >
-                  <option value="matricula">Matrícula (novo aluno)</option>
-                  <option value="rematricula">Rematrícula (aluno já inscrito)</option>
+                  <option value="matricula">
+                    Matrícula (novo aluno)
+                  </option>
+
+                  <option value="rematricula">
+                    Rematrícula (aluno já inscrito)
+                  </option>
                 </Select>
 
                 <div>
-                  <Label required>PCD (Pessoa com Deficiência)?</Label>
+                  <Label required>
+                    PCD (Pessoa com Deficiência)?
+                  </Label>
+
                   <div className="flex gap-3 mt-1">
-                    {['nao', 'sim'].map(valor => (
-                      <button
-                        key={valor}
-                        type="button"
-                        onClick={() => set('pcd', valor)}
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all ${
-                          form.pcd === valor
-                            ? 'bg-amarelo/15 border-amarelo text-amarelo'
-                            : 'bg-mis-bg3 border-mis-borda text-mis-texto2'
-                        }`}
-                      >
-                        {valor === 'nao' ? 'Não' : 'Sim'}
-                      </button>
-                    ))}
+                    {[
+                      'nao',
+                      'sim',
+                    ].map(
+                      valor => (
+                        <button
+                          key={valor}
+                          type="button"
+                          onClick={() =>
+                            set(
+                              'pcd',
+                              valor
+                            )
+                          }
+                          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                            form.pcd ===
+                            valor
+                              ? 'bg-amarelo/15 border-amarelo text-amarelo'
+                              : 'bg-mis-bg3 border-mis-borda text-mis-texto2'
+                          }`}
+                        >
+                          {valor ===
+                          'nao'
+                            ? 'Não'
+                            : 'Sim'}
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
@@ -810,83 +1799,147 @@ export default function Matricula() {
 
         {step === 2 && (
           <div className="space-y-6 animate-fade-in">
+
             <div className="mis-card">
               <h2 className="section-title mb-4 flex items-center gap-2">
                 <span className="w-6 h-6 bg-azul/20 text-azul rounded flex items-center justify-center">
                   <Users size={14} />
                 </span>
+
                 Dados do Responsável
               </h2>
 
               <div className="space-y-4">
+
                 <Input
                   label="Nome completo"
                   required
                   placeholder="Nome do responsável"
-                  value={form.resp_nome}
-                  onChange={e => set('resp_nome', e.target.value)}
-                  error={erros.resp_nome}
+                  value={
+                    form.resp_nome
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'resp_nome',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.resp_nome
+                  }
                 />
 
                 <Input
                   label="Telefone"
                   required
                   placeholder="(00) 00000-0000"
-                  value={form.resp_telefone}
-                  onChange={e => set('resp_telefone', e.target.value)}
-                  error={erros.resp_telefone}
+                  value={
+                    form.resp_telefone
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'resp_telefone',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.resp_telefone
+                  }
                 />
 
                 <Input
                   label="E-mail"
                   type="email"
                   placeholder="email@exemplo.com (opcional)"
-                  value={form.resp_email}
-                  onChange={e => set('resp_email', e.target.value)}
-                  error={erros.resp_email}
+                  value={
+                    form.resp_email
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'resp_email',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.resp_email
+                  }
                 />
 
                 <Input
                   label="Nº de Integrantes na Família"
                   type="number"
                   min="1"
-                  placeholder="Ex: 4"
                   max="20"
-                  value={form.integrantes_familia}
-                  onChange={e => set('integrantes_familia', e.target.value)}
-                  error={erros.integrantes_familia}
+                  placeholder="Ex: 4"
+                  value={
+                    form.integrantes_familia
+                  }
+                  onChange={
+                    e =>
+                      set(
+                        'integrantes_familia',
+                        e.target.value
+                      )
+                  }
+                  error={
+                    erros.integrantes_familia
+                  }
                 />
 
                 <div>
-                  <Label>Programas Sociais</Label>
+                  <Label>
+                    Programas Sociais
+                  </Label>
+
                   <div className="grid grid-cols-2 gap-2 mt-1">
-                    {PROGRAMAS_SOCIAIS.map(programa => (
-                      <button
-                        key={programa}
-                        type="button"
-                        onClick={() => togglePrograma(programa)}
-                        className={`
-                          flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left
-                          border transition-all duration-150
-                          ${form.programas_sociais.includes(programa)
-                            ? 'bg-azul/15 border-azul text-azul-light'
-                            : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-azul/50'}
-                        `}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                            form.programas_sociais.includes(programa)
-                              ? 'bg-azul border-azul'
-                              : 'border-mis-borda'
-                          }`}
+                    {PROGRAMAS_SOCIAIS.map(
+                      programa => (
+                        <button
+                          key={programa}
+                          type="button"
+                          onClick={() =>
+                            togglePrograma(
+                              programa
+                            )
+                          }
+                          className={`
+                            flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left
+                            border transition-all duration-150
+                            ${
+                              form.programas_sociais.includes(
+                                programa
+                              )
+                                ? 'bg-azul/15 border-azul text-azul-light'
+                                : 'bg-mis-bg3 border-mis-borda text-mis-texto2 hover:border-azul/50'
+                            }
+                          `}
                         >
-                          {form.programas_sociais.includes(programa) && (
-                            <Check size={10} className="text-white" />
-                          )}
-                        </div>
-                        {programa}
-                      </button>
-                    ))}
+                          <div
+                            className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                              form.programas_sociais.includes(
+                                programa
+                              )
+                                ? 'bg-azul border-azul'
+                                : 'border-mis-borda'
+                            }`}
+                          >
+                            {form.programas_sociais.includes(
+                              programa
+                            ) && (
+                              <Check
+                                size={10}
+                                className="text-white"
+                              />
+                            )}
+                          </div>
+
+                          {programa}
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
@@ -896,61 +1949,125 @@ export default function Matricula() {
 
         {step === 3 && (
           <div className="space-y-4 animate-fade-in">
+
             <div className="mis-card">
-              <h2 className="section-title mb-4">Revisão dos Dados</h2>
+              <h2 className="section-title mb-4">
+                Revisão dos Dados
+              </h2>
 
               <div className="space-y-2 text-sm">
+
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Aluno</span>
-                  <span className="text-mis-texto font-medium">{form.nome}</span>
+                  <span className="text-mis-texto2">
+                    Aluno
+                  </span>
+
+                  <span className="text-mis-texto font-medium">
+                    {form.nome}
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Idade</span>
-                  <span className="text-mis-texto">{form.idade} anos</span>
+                  <span className="text-mis-texto2">
+                    Data de nascimento
+                  </span>
+
+                  <span className="text-mis-texto">
+                    {formatarData(
+                      dataNascimento
+                    )}
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">CPF</span>
-                  <span className="text-mis-texto">{form.cpf}</span>
+                  <span className="text-mis-texto2">
+                    Idade
+                  </span>
+
+                  <span className="text-mis-texto">
+                    {idadeCalculada} anos
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Tipo</span>
-                  <span className="text-mis-texto capitalize">{form.tipo_matricula}</span>
+                  <span className="text-mis-texto2">
+                    CPF
+                  </span>
+
+                  <span className="text-mis-texto">
+                    {form.cpf}
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Escola</span>
-                  <span className="text-mis-texto text-right max-w-[60%]">{form.escola}</span>
+                  <span className="text-mis-texto2">
+                    Tipo
+                  </span>
+
+                  <span className="text-mis-texto capitalize">
+                    {form.tipo_matricula}
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Bairro</span>
-                  <span className="text-mis-texto">{form.bairro}</span>
+                  <span className="text-mis-texto2">
+                    Escola
+                  </span>
+
+                  <span className="text-mis-texto text-right max-w-[60%]">
+                    {form.escola}
+                  </span>
                 </div>
 
                 <div className="flex justify-between py-2 border-b border-mis-borda">
-                  <span className="text-mis-texto2">Responsável</span>
-                  <span className="text-mis-texto">{form.resp_nome}</span>
+                  <span className="text-mis-texto2">
+                    Bairro
+                  </span>
+
+                  <span className="text-mis-texto">
+                    {form.bairro}
+                  </span>
+                </div>
+
+                <div className="flex justify-between py-2 border-b border-mis-borda">
+                  <span className="text-mis-texto2">
+                    Responsável
+                  </span>
+
+                  <span className="text-mis-texto">
+                    {form.resp_nome}
+                  </span>
                 </div>
 
                 <div className="py-2">
-                  <span className="text-mis-texto2 block mb-2">Oficinas</span>
+                  <span className="text-mis-texto2 block mb-2">
+                    Oficinas
+                  </span>
+
                   <div className="flex flex-wrap gap-1">
-                    {form.oficinas.map(oficina => (
-                      <span key={oficina} className="badge badge-amarelo">
-                        {oficina}
-                      </span>
-                    ))}
+                    {form.oficinas.map(
+                      oficina => (
+                        <span
+                          key={oficina}
+                          className="badge badge-amarelo"
+                        >
+                          {oficina}
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="mis-card border border-azul/20">
+
               <h3 className="text-sm font-bold text-mis-texto mb-2 flex items-center gap-2">
-                <Users size={16} className="text-azul" />
+                <Users
+                  size={16}
+                  className="text-azul"
+                />
+
                 Grupo de responsáveis
               </h3>
 
@@ -960,22 +2077,38 @@ export default function Matricula() {
 
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { valor: 'sim', texto: 'Sim' },
-                  { valor: 'nao', texto: 'Não' },
-                ].map(opcao => (
-                  <button
-                    key={opcao.valor}
-                    type="button"
-                    onClick={() => set('responsavel_no_grupo_whatsapp', opcao.valor)}
-                    className={`py-2.5 rounded-lg text-sm font-semibold border transition-all ${
-                      form.responsavel_no_grupo_whatsapp === opcao.valor
-                        ? 'bg-azul/15 border-azul text-azul-light'
-                        : 'bg-mis-bg3 border-mis-borda text-mis-texto2'
-                    }`}
-                  >
-                    {opcao.texto}
-                  </button>
-                ))}
+                  {
+                    valor: 'sim',
+                    texto: 'Sim',
+                  },
+                  {
+                    valor: 'nao',
+                    texto: 'Não',
+                  },
+                ].map(
+                  opcao => (
+                    <button
+                      key={
+                        opcao.valor
+                      }
+                      type="button"
+                      onClick={() =>
+                        set(
+                          'responsavel_no_grupo_whatsapp',
+                          opcao.valor
+                        )
+                      }
+                      className={`py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                        form.responsavel_no_grupo_whatsapp ===
+                        opcao.valor
+                          ? 'bg-azul/15 border-azul text-azul-light'
+                          : 'bg-mis-bg3 border-mis-borda text-mis-texto2'
+                      }`}
+                    >
+                      {opcao.texto}
+                    </button>
+                  )
+                )}
               </div>
 
               {erros.responsavel_no_grupo_whatsapp && (
@@ -986,15 +2119,22 @@ export default function Matricula() {
             </div>
 
             <div className="mis-card border border-amarelo/20">
+
               <h3 className="text-sm font-bold text-mis-texto mb-3 flex items-center gap-2">
-                <AlertCircle size={16} className="text-amarelo" />
+                <AlertCircle
+                  size={16}
+                  className="text-amarelo"
+                />
+
                 Termo de Uso de Imagem
               </h3>
 
               <p className="text-xs text-mis-texto2 leading-relaxed mb-4">
                 Ao enviar esta matrícula, o responsável legal declara estar ciente e de acordo que a
-                <strong className="text-mis-texto"> Escola de Música Made In Sertão</strong> poderá
-                utilizar imagens e vídeos do(a) aluno(a) capturados durante as atividades do programa
+                <strong className="text-mis-texto">
+                  {' '}Escola de Música Made In Sertão
+                </strong>{' '}
+                poderá utilizar imagens e vídeos do(a) aluno(a) capturados durante as atividades do programa
                 para fins de divulgação institucional em redes sociais, materiais gráficos, relatórios
                 e demais canais de comunicação oficiais da escola, sem qualquer ônus. O responsável
                 poderá revogar esta autorização a qualquer momento mediante solicitação formal à
@@ -1003,19 +2143,35 @@ export default function Matricula() {
 
               <button
                 type="button"
-                onClick={() => setAceitouTermos(!aceitouTermos)}
+                onClick={() =>
+                  setAceitouTermos(
+                    !aceitouTermos
+                  )
+                }
                 className={`
                   flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg border transition-all
-                  ${aceitouTermos ? 'bg-verde/10 border-verde/40' : 'bg-mis-bg3 border-mis-borda'}
+                  ${
+                    aceitouTermos
+                      ? 'bg-verde/10 border-verde/40'
+                      : 'bg-mis-bg3 border-mis-borda'
+                  }
                 `}
               >
                 <div
                   className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
-                    aceitouTermos ? 'bg-verde border-verde' : 'border-mis-borda'
+                    aceitouTermos
+                      ? 'bg-verde border-verde'
+                      : 'border-mis-borda'
                   }`}
                 >
-                  {aceitouTermos && <Check size={12} className="text-white" />}
+                  {aceitouTermos && (
+                    <Check
+                      size={12}
+                      className="text-white"
+                    />
+                  )}
                 </div>
+
                 <span className="text-xs text-mis-texto">
                   Li e estou de acordo com o termo de uso de imagem.
                 </span>
@@ -1024,7 +2180,10 @@ export default function Matricula() {
 
             {erroGeral && (
               <div className="bg-red-900/30 border border-red-800 text-red-400 text-sm rounded-lg px-4 py-3 flex items-center gap-2">
-                <AlertCircle size={16} />
+                <AlertCircle
+                  size={16}
+                />
+
                 {erroGeral}
               </div>
             )}
@@ -1032,6 +2191,7 @@ export default function Matricula() {
         )}
 
         <div className="flex gap-3 mt-6">
+
           {step > 1 && (
             <button
               type="button"
@@ -1049,7 +2209,9 @@ export default function Matricula() {
               onClick={avancar}
               className="btn-primary flex-1 flex items-center justify-center gap-2 py-3"
             >
-              Próximo <ChevronRight size={16} />
+              Próximo
+
+              <ChevronRight size={16} />
             </button>
           ) : (
             <button
@@ -1059,8 +2221,11 @@ export default function Matricula() {
               className="btn-primary flex-1 flex items-center justify-center gap-2 py-3"
             >
               {loading
-                ? <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                : 'Enviar Matrícula'}
+                ? (
+                  <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                )
+                : 'Enviar Matrícula'
+              }
             </button>
           )}
         </div>
