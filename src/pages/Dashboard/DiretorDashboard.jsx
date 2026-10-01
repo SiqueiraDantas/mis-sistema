@@ -875,18 +875,16 @@ function ModalExportacao({
 // ─── MODAL FREQUENCIA ────────────────────────────────────────────────────────
 
 function ModalFrequencia({
+  turmas,
   periodoLetivo,
   onClose,
 }) {
   const [
-    oficinas,
-    setOficinas,
-  ] = useState([])
-
-  const [
-    oficinaSelecionada,
-    setOficinaSelecionada,
-  ] = useState('')
+    turmaSelecionada,
+    setTurmaSelecionada,
+  ] = useState(
+    turmas[0]?.id || ''
+  )
 
   const [
     dataInicio,
@@ -903,11 +901,6 @@ function ModalFrequencia({
     setLoading,
   ] = useState(false)
 
-  const [
-    loadingOficinas,
-    setLoadingOficinas,
-  ] = useState(true)
-
   const [erro, setErro] =
     useState('')
 
@@ -919,40 +912,16 @@ function ModalFrequencia({
   const [step, setStep] =
     useState(1)
 
-  useEffect(() => {
-    supabase
-      .from('oficinas')
-      .select('id, nome')
-      .eq(
-        'ativo',
-        true
-      )
-      .order('nome')
-      .then(
-        ({ data }) => {
-          setOficinas(
-            data || []
-          )
-
-          if (
-            data?.length >
-            0
-          ) {
-            setOficinaSelecionada(
-              data[0].id
-            )
-          }
-
-          setLoadingOficinas(
-            false
-          )
-        }
-      )
-  }, [])
+  const turma =
+    turmas.find(
+      t =>
+        t.id ===
+        turmaSelecionada
+    )
 
   async function buscarPreview() {
     if (
-      !oficinaSelecionada ||
+      !turmaSelecionada ||
       !dataInicio ||
       !dataFim
     ) {
@@ -978,9 +947,11 @@ function ModalFrequencia({
       const [
         {
           data: freqs,
+          error: erroFreqs,
         },
         {
-          data: matriculas,
+          data: vinculos,
+          error: erroVinculos,
         },
       ] = await Promise.all([
         supabase
@@ -988,7 +959,7 @@ function ModalFrequencia({
           .select('*')
           .eq(
             'turma_id',
-            oficinaSelecionada
+            turmaSelecionada
           )
           .eq(
             'periodo_letivo',
@@ -1004,30 +975,40 @@ function ModalFrequencia({
           ),
 
         supabase
-          .from(
-            'matriculas_oficinas'
-          )
-          .select(
-            'aluno_id, alunos(nome)'
-          )
+          .from('frequencias')
+          .select('aluno_id')
           .eq(
-            'oficina_id',
-            oficinaSelecionada
+            'turma_id',
+            turmaSelecionada
           )
           .eq(
             'periodo_letivo',
             periodoLetivo
+          )
+          .is(
+            'data_aula',
+            null
           ),
       ])
+
+      if (erroFreqs) {
+        throw erroFreqs
+      }
+
+      if (erroVinculos) {
+        throw erroVinculos
+      }
 
       const diasComAula = [
         ...new Set(
           (
             freqs || []
-          ).map(
-            f =>
-              f.data_aula
           )
+            .map(
+              f =>
+                f.data_aula
+            )
+            .filter(Boolean)
         ),
       ].sort()
 
@@ -1038,21 +1019,50 @@ function ModalFrequencia({
         setErro(
           'Nenhuma aula registrada neste período'
         )
-
-        setLoading(false)
         return
       }
 
-      const alunos =
-        (
-          matriculas ||
-          []
-        )
-          .map(
-            m =>
-              m.alunos
+      const idsAlunos = [
+        ...new Set(
+          (
+            vinculos || []
           )
-          .filter(Boolean)
+            .map(
+              vinculo =>
+                vinculo.aluno_id
+            )
+            .filter(Boolean)
+        ),
+      ]
+
+      let alunos = []
+
+      if (
+        idsAlunos.length >
+        0
+      ) {
+        const {
+          data: alunosData,
+          error: erroAlunos,
+        } = await supabase
+          .from('alunos')
+          .select(
+            'id, nome'
+          )
+          .in(
+            'id',
+            idsAlunos
+          )
+          .order('nome')
+
+        if (erroAlunos) {
+          throw erroAlunos
+        }
+
+        alunos =
+          alunosData ||
+          []
+      }
 
       const presencas =
         (
@@ -1118,8 +1128,8 @@ function ModalFrequencia({
 
             body:
               JSON.stringify({
-                oficina_id:
-                  oficinaSelecionada,
+                turma_id:
+                  turmaSelecionada,
 
                 data_inicio:
                   dataInicio,
@@ -1155,13 +1165,9 @@ function ModalFrequencia({
       const blob =
         await resp.blob()
 
-      const nomeOficina =
-        oficinas.find(
-          o =>
-            o.id ===
-            oficinaSelecionada
-        )?.nome ||
-        'oficina'
+      const nomeTurma =
+        turma?.nome ||
+        'turma'
 
       const url =
         URL.createObjectURL(
@@ -1176,7 +1182,7 @@ function ModalFrequencia({
       a.href = url
 
       a.download =
-        `Frequencia_${nomeOficina.replace(/\s+/g, '_')}_${dataInicio}_${dataFim}.docx`
+        `Frequencia_${nomeTurma.replace(/\s+/g, '_')}_${dataInicio}_${dataFim}.docx`
 
       a.click()
 
@@ -1198,12 +1204,8 @@ function ModalFrequencia({
     }
   }
 
-  const nomeOficina =
-    oficinas.find(
-      o =>
-        o.id ===
-        oficinaSelecionada
-    )?.nome ||
+  const nomeTurma =
+    turma?.nome ||
     ''
 
   return (
@@ -1282,51 +1284,37 @@ function ModalFrequencia({
             <div className="space-y-4">
 
               <p className="text-xs text-mis-texto2">
-                Selecione a oficina e o período para gerar a folha de frequência.
+                Selecione a turma e o período para gerar a folha de frequência.
               </p>
 
               <div>
                 <label className="mis-label">
-                  Oficina
+                  Turma
                 </label>
 
-                {loadingOficinas
-                  ? (
-                    <div className="mis-input flex items-center gap-2 text-mis-texto2">
-                      <Loader
-                        size={13}
-                        className="animate-spin"
-                      />
-
-                      Carregando...
-                    </div>
-                  )
-                  : (
-                    <select
-                      className="mis-input"
-                      value={
-                        oficinaSelecionada
-                      }
-                      onChange={
-                        e =>
-                          setOficinaSelecionada(
-                            e.target.value
-                          )
-                      }
-                    >
-                      {oficinas.map(
-                        o => (
-                          <option
-                            key={o.id}
-                            value={o.id}
-                          >
-                            {o.nome}
-                          </option>
-                        )
-                      )}
-                    </select>
-                  )
-                }
+                <select
+                  className="mis-input"
+                  value={
+                    turmaSelecionada
+                  }
+                  onChange={
+                    e =>
+                      setTurmaSelecionada(
+                        e.target.value
+                      )
+                  }
+                >
+                  {turmas.map(
+                    t => (
+                      <option
+                        key={t.id}
+                        value={t.id}
+                      >
+                        {t.nome}
+                      </option>
+                    )
+                  )}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1390,11 +1378,11 @@ function ModalFrequencia({
               <div className="bg-mis-bg3 rounded-xl p-3 border border-mis-borda">
 
                 <p className="text-xs text-mis-texto2 mb-1">
-                  Oficina
+                  Turma
                 </p>
 
                 <p className="text-sm font-bold text-mis-texto">
-                  {nomeOficina}
+                  {nomeTurma}
                 </p>
 
                 <p className="text-xs text-mis-texto2">
@@ -1529,7 +1517,10 @@ function ModalFrequencia({
                     .map(
                       (a, i) => (
                         <div
-                          key={i}
+                          key={
+                            a.id ||
+                            i
+                          }
                           className="text-xs text-mis-texto bg-mis-bg3 rounded-lg px-3 py-1.5 border border-mis-borda"
                         >
                           {i + 1}.{' '}
@@ -2133,8 +2124,6 @@ export default function DiretorDashboard() {
           aniversariantesDoMes
         )
 
-        // Conta somente oficinas
-        // que possuem alunos no período.
         const oficinasComMatricula =
           new Set(
             (
@@ -3317,7 +3306,7 @@ export default function DiretorDashboard() {
             icon={Calendar}
             titulo="Frequência de Alunos"
             badge="DOCX"
-            descricao="Gera a tabela de presença com P/F por data para cada aluno da oficina no período selecionado."
+            descricao="Gera a tabela de presença com P/F por data para cada aluno da turma no período selecionado."
             cor="bg-azul/15 text-azul"
             onClick={() =>
               setModalFrequenciaAberto(
@@ -4092,6 +4081,7 @@ export default function DiretorDashboard() {
 
       {modalFrequenciaAberto && (
         <ModalFrequencia
+          turmas={turmas}
           periodoLetivo={
             periodoLetivo
           }
