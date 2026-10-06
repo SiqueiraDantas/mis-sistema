@@ -498,7 +498,7 @@ function ModalAula({
                   className="animate-spin"
                 />
 
-                Salvando...
+                <span>Salvando...</span>
               </>
 
             ) : (
@@ -506,7 +506,7 @@ function ModalAula({
               <>
                 <Save size={14} />
 
-                Salvar Frequência
+                <span>Salvar Frequência</span>
               </>
 
             )}
