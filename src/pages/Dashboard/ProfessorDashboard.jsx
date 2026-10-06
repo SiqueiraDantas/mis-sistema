@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabase'
+import AlertasFaltasProfessor from '../../components/AlertasFaltasProfessor'
 import {
   GraduationCap, Users, ClipboardList, FileText,
   Edit3, Save, X, Lock, Music, Phone, Mail,
@@ -287,6 +288,8 @@ export default function ProfessorDashboard() {
           {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      <AlertasFaltasProfessor />
 
       {/* Layout principal: bio + cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
